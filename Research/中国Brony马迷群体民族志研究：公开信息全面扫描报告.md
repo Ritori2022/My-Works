@@ -1,4 +1,5 @@
 # 中国Brony马迷群体民族志研究：公开信息全面扫描报告
+#### https://claude.ai/public/artifacts/1478765f-910f-4a04-b881-efcf32d65623
 
 ## 核心发现：文化的双向塑造
 
