@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>赛博萤火虫 v3.0：视界与回响</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #0a0a12;
+            color: #e0e0e0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        #canvas {
+            display: block;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(15, 15, 25, 0.9);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #4a4a6a;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+            max-width: 340px;
+            max-height: 90vh;
+            overflow-y: auto;
+            transition: all 0.3s ease;
+        }
+        /* Scrollbar */
+        #ui-layer::-webkit-scrollbar { width: 6px; }
+        #ui-layer::-webkit-scrollbar-thumb { background: #4a4a6a; border-radius: 3px; }
+        
+        h1 {
+            font-size: 18px;
+            margin: 0 0 10px 0;
+            color: #00f3ff;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .ai-badge {
+            font-size: 10px;
+            background: linear-gradient(45deg, #4285f4, #9b72cb);
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: white;
+            box-shadow: 0 0 10px rgba(66, 133, 244, 0.4);
+        }
+        p {
+            font-size: 12px;
+            color: #aaaaaa;
+            margin-bottom: 15px;
+            line-height: 1.4;
+        }
+        .control-group { margin-bottom: 12px; }
+        label {
+            display: flex; justify-content: space-between;
+            font-size: 12px; margin-bottom: 4px; color: #fff;
+        }
+        input[type="range"] {
+            width: 100%; cursor: pointer; accent-color: #00f3ff;
+        }
+        
+        /* AI Section Styling */
+        .ai-section {
+            border-top: 1px solid #4a4a6a;
+            margin-top: 15px;
+            padding-top: 15px;
+        }
+        .ai-input {
+            width: 100%;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid #4a4a6a;
+            color: white;
+            padding: 8px;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            box-sizing: border-box;
+            font-size: 12px;
+        }
+        .ai-input:focus { border-color: #00f3ff; outline: none; }
+        
+        .btn-magic {
+            width: 100%;
+            padding: 8px;
+            background: linear-gradient(90deg, #2b2b40, #3a3a55);
+            border: 1px solid #5a5a7a;
+            color: white;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-bottom: 8px;
+            transition: all 0.2s;
+            display: flex; justify-content: center; align-items: center; gap: 6px;
+        }
+        .btn-magic:hover {
+            background: linear-gradient(90deg, #4285f4, #9b72cb);
+            border-color: #fff; transform: translateY(-1px);
+        }
+        .btn-magic:active { transform: translateY(1px); }
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid #555;
+        }
+
+        #ai-status {
+            font-size: 11px; color: #ff00de; min-height: 15px;
+            margin-bottom: 5px; font-style: italic;
+        }
+        #hive-thought {
+            font-size: 12px; color: #00f3ff;
+            margin-top: 10px; padding: 10px;
+            background: rgba(0, 243, 255, 0.1);
+            border-left: 3px solid #00f3ff;
+            border-radius: 0 4px 4px 0;
+            display: none;
+            font-family: 'Georgia', serif;
+            position: relative;
+        }
+        #btn-speak {
+            position: absolute; right: 5px; bottom: 5px;
+            font-size: 16px; cursor: pointer; opacity: 0.7;
+            background: none; border: none; padding: 0;
+        }
+        #btn-speak:hover { opacity: 1; transform: scale(1.1); }
+        
+        /* Timeline Indicator */
+        .timeline-bar {
+            height: 4px; background: #333;
+            border-radius: 2px; margin-top: 5px;
+            overflow: hidden; display: none;
+        }
+        .timeline-progress {
+            height: 100%; width: 0%;
+            background: #00f3ff; transition: width 0.1s linear;
+        }
+
+        .status {
+            font-family: monospace; font-size: 11px; color: #888;
+            margin-top: 15px; border-top: 1px solid #333; padding-top: 10px;
+        }
+        .highlight { color: #00f3ff; font-weight: bold; }
+        
+        .spinner {
+            width: 12px; height: 12px;
+            border: 2px solid #fff; border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 1s linear infinite; display: inline-block;
+        }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+<div id="ui-layer">
+    <h1>分布式智能 <span class="ai-badge">Gemini Pro</span></h1>
+    <p>视界与回响。用光影编排故事，用声音聆听混沌。</p>
+    
+    <!-- AI Control Section -->
+    <div class="ai-section">
+        <label>🎬 叙事编排 (Story Mode)</label>
+        <input type="text" id="story-prompt" class="ai-input" placeholder="输入场景：如'宇宙大爆炸'或'暴风雨'">
+        <button id="btn-choreograph" class="btn-magic" onclick="choreograph()">
+            ✨ 生成并导演三幕剧
+        </button>
+        <div id="timeline" class="timeline-bar"><div id="progress" class="timeline-progress"></div></div>
+        
+        <div style="height: 12px; border-bottom: 1px dashed #444; margin-bottom:12px;"></div>
+
+        <button id="btn-read" class="btn-magic btn-secondary" onclick="readHiveMind()">
+            ✨ 读取思维 (Read Mind)
+        </button>
+        
+        <div id="ai-status"></div>
+        <div id="hive-thought">
+            <span id="thought-text"></span>
+            <button id="btn-speak" title="播放声音" onclick="speakThought()">🔊</button>
+        </div>
+    </div>
+
+    <div class="status">----- 手动微调 -----</div>
+
+    <div class="control-group">
+        <label><span>视觉半径</span> <span id="val-radius">60</span></label>
+        <input type="range" id="param-radius" min="10" max="150" value="60">
+    </div>
+
+    <div class="control-group">
+        <label><span>对齐力 (Alignment)</span> <span id="val-align">1.0</span></label>
+        <input type="range" id="param-align" min="0" max="5" step="0.1" value="1.0">
+    </div>
+
+    <div class="control-group">
+        <label><span>凝聚力 (Cohesion)</span> <span id="val-cohesion">0.8</span></label>
+        <input type="range" id="param-cohesion" min="0" max="5" step="0.1" value="0.8">
+    </div>
+
+    <div class="control-group">
+        <label><span>分离力 (Separation)</span> <span id="val-separation">1.5</span></label>
+        <input type="range" id="param-separation" min="0" max="5" step="0.1" value="1.5">
+    </div>
+    
+    <div class="control-group">
+        <label><span>最大速度</span> <span id="val-speed">4</span></label>
+        <input type="range" id="param-speed" min="1" max="10" step="0.5" value="4">
+    </div>
+
+    <div class="status">
+        智能体数量：<span id="agent-count">150</span>
+    </div>
+</div>
+
+<canvas id="canvas"></canvas>
+
+<script>
+    /**
+     * GEMINI API CONFIGURATION
+     */
+    const apiKey = ""; // System provides key at runtime
+    const TEXT_MODEL = "gemini-2.5-flash-preview-09-2025";
+    const TTS_MODEL = "gemini-2.5-flash-preview-tts";
+
+    // --- UTILS: Call Gemini Text ---
+    async function callGeminiText(promptText, systemInstruction = "", responseSchema = null) {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${TEXT_MODEL}:generateContent?key=${apiKey}`;
+        const payload = {
+            contents: [{ parts: [{ text: promptText }] }],
+            systemInstruction: { parts: [{ text: systemInstruction }] }
+        };
+
+        if (responseSchema) {
+            payload.generationConfig = {
+                responseMimeType: "application/json",
+                responseSchema: responseSchema
+            };
+        }
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) throw new Error(`Gemini Text Error: ${response.status}`);
+        const data = await response.json();
+        return data.candidates[0].content.parts[0].text;
+    }
+
+    // --- UTILS: Call Gemini TTS ---
+    async function callGeminiTTS(textToSpeak) {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${TTS_MODEL}:generateContent?key=${apiKey}`;
+        const payload = {
+            contents: [{ parts: [{ text: textToSpeak }] }],
+            generationConfig: {
+                responseModalities: ["AUDIO"],
+                speechConfig: {
+                    voiceConfig: {
+                        prebuiltVoiceConfig: { voiceName: "Fenrir" } // Deep, mysterious voice
+                    }
+                }
+            }
+        };
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) throw new Error(`Gemini TTS Error: ${response.status}`);
+        const data = await response.json();
+        // The API returns inlineData with base64 encoded audio
+        return data.candidates[0].content.parts[0].inlineData.data;
+    }
+
+    /**
+     * FEATURE 1: NARRATIVE CHOREOGRAPHY
+     */
+    let animationFrameId = null;
+    let choreographyActive = false;
+
+    async function choreograph() {
+        const input = document.getElementById('story-prompt').value;
+        const statusEl = document.getElementById('ai-status');
+        const timelineEl = document.getElementById('timeline');
+        
+        if (!input) return;
+
+        statusEl.innerHTML = '<span class="spinner"></span> 导演正在构思剧本...';
+        timelineEl.style.display = 'none';
+        choreographyActive = false;
+
+        const systemPrompt = `You are a visual director for a particle simulation. 
+        Create a 3-stage sequence (Intro, Climax, Resolution) to visualize the user's theme.
+        For each stage, define physics parameters and a duration in milliseconds (2000-5000ms).
+        
+        Params:
+        - align (0-5): Orderly vs Chaotic
+        - cohesion (0-5): Clumped vs Spread
+        - separation (0-5): Expanding vs Contracting
+        - speed (1-10): Energy level
+        - hue (0-360): Color mood
+        
+        Return JSON.`;
+
+        const schema = {
+            type: "ARRAY",
+            items: {
+                type: "OBJECT",
+                properties: {
+                    name: { type: "STRING" },
+                    duration: { type: "INTEGER" },
+                    align: { type: "NUMBER" },
+                    cohesion: { type: "NUMBER" },
+                    separation: { type: "NUMBER" },
+                    speed: { type: "NUMBER" },
+                    hue: { type: "INTEGER" }
+                },
+                required: ["duration", "align", "cohesion", "separation", "speed", "hue", "name"]
+            }
+        };
+
+        try {
+            const resultText = await callGeminiText(input, systemPrompt, schema);
+            const sequence = JSON.parse(resultText);
+            
+            statusEl.innerText = "✨ 剧本已生成，开始演绎...";
+            timelineEl.style.display = 'block';
+            playSequence(sequence);
+        } catch (e) {
+            console.error(e);
+            statusEl.innerText = "导演罢工了 (Error)";
+        }
+    }
+
+    async function playSequence(sequence) {
+        choreographyActive = true;
+        const statusEl = document.getElementById('ai-status');
+        const progressEl = document.getElementById('progress');
+        
+        let totalDuration = sequence.reduce((acc, stage) => acc + stage.duration, 0);
+        let elapsed = 0;
+
+        for (let i = 0; i < sequence.length; i++) {
+            if (!choreographyActive) break; // User interrupted
+            
+            const stage = sequence[i];
+            statusEl.innerText = `🎬 第 ${i+1} 幕: ${stage.name}`;
+            
+            // Apply params
+            applyConfig({
+                alignWeight: stage.align,
+                cohesionWeight: stage.cohesion,
+                separationWeight: stage.separation,
+                maxSpeed: stage.speed,
+                colorHue: stage.hue
+            });
+
+            // Smooth progress bar for this stage
+            const startTime = Date.now();
+            while (Date.now() - startTime < stage.duration) {
+                if (!choreographyActive) break;
+                let stageProgress = (Date.now() - startTime);
+                let totalProgress = (elapsed + stageProgress) / totalDuration * 100;
+                progressEl.style.width = `${totalProgress}%`;
+                await new Promise(r => requestAnimationFrame(r));
+            }
+            elapsed += stage.duration;
+        }
+
+        if (choreographyActive) {
+            statusEl.innerText = "✨ 演出结束";
+            progressEl.style.width = "100%";
+            setTimeout(() => { 
+                document.getElementById('timeline').style.display = 'none'; 
+                progressEl.style.width = "0%";
+            }, 2000);
+        }
+    }
+
+    /**
+     * FEATURE 2: HIVE MIND & TTS
+     */
+    let currentThoughtText = "";
+
+    async function readHiveMind() {
+        choreographyActive = false; // Stop any movie
+        const statusEl = document.getElementById('ai-status');
+        const thoughtEl = document.getElementById('hive-thought');
+        const thoughtTextEl = document.getElementById('thought-text');
+        
+        statusEl.innerHTML = '<span class="spinner"></span> 聆听中...';
+        thoughtEl.style.display = 'none';
+
+        const currentState = `
+        Align: ${params.alignWeight}, Cohesion: ${params.cohesionWeight}, Separation: ${params.separationWeight}, Speed: ${params.maxSpeed}, Hue: ${agents[0].baseHue}
+        `;
+
+        const systemPrompt = `You are the collective consciousness of a swarm. 
+        Generate a very short, poetic, mysterious sentence (max 20 words) in Chinese based on physics params.
+        High cohesion = we are one/love. High separation = fear/loneliness. High speed = panic/excitement.`;
+
+        try {
+            currentThoughtText = await callGeminiText(currentState, systemPrompt);
+            statusEl.innerText = "";
+            thoughtTextEl.innerText = `"${currentThoughtText.trim()}"`;
+            thoughtEl.style.display = 'block';
+        } catch (e) {
+            statusEl.innerText = "连接断开...";
+        }
+    }
+
+    async function speakThought() {
+        const btn = document.getElementById('btn-speak');
+        if (!currentThoughtText) return;
+        
+        const originalText = btn.innerText;
+        btn.innerText = "⏳"; // Loading icon
+        
+        try {
+            const base64Audio = await callGeminiTTS(currentThoughtText);
+            playPCM(base64Audio);
+            btn.innerText = "🔊";
+        } catch (e) {
+            console.error(e);
+            btn.innerText = "❌";
+            setTimeout(() => btn.innerText = "🔊", 2000);
+        }
+    }
+
+    // --- AUDIO UTILS: PCM to WAV Playback ---
+    function playPCM(base64Data) {
+        const binaryString = window.atob(base64Data);
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+        }
+        
+        // Gemini TTS returns raw PCM 16-bit, 24kHz (usually) mono.
+        // We need to wrap it in a WAV header to play it easily in browser context.
+        const wavBytes = createWavHeader(bytes, 24000, 1, 16);
+        const blob = new Blob([wavBytes], { type: 'audio/wav' });
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audio.play();
+    }
+
+    function createWavHeader(pcmData, sampleRate, numChannels, bitsPerSample) {
+        const header = new ArrayBuffer(44);
+        const view = new DataView(header);
+        const dataSize = pcmData.length;
+
+        // RIFF chunk descriptor
+        writeString(view, 0, 'RIFF');
+        view.setUint32(4, 36 + dataSize, true);
+        writeString(view, 8, 'WAVE');
+        // fmt sub-chunk
+        writeString(view, 12, 'fmt ');
+        view.setUint32(16, 16, true); // Subchunk1Size
+        view.setUint16(20, 1, true); // AudioFormat (1 = PCM)
+        view.setUint16(22, numChannels, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * numChannels * (bitsPerSample / 8), true); // ByteRate
+        view.setUint16(32, numChannels * (bitsPerSample / 8), true); // BlockAlign
+        view.setUint16(34, bitsPerSample, true);
+        // data sub-chunk
+        writeString(view, 36, 'data');
+        view.setUint32(40, dataSize, true);
+
+        // Concatenate header and data
+        const wavFile = new Uint8Array(header.byteLength + dataSize);
+        wavFile.set(new Uint8Array(header), 0);
+        wavFile.set(pcmData, header.byteLength);
+        
+        return wavFile;
+    }
+
+    function writeString(view, offset, string) {
+        for (let i = 0; i < string.length; i++) {
+            view.setUint8(offset + i, string.charCodeAt(i));
+        }
+    }
+
+
+    /**
+     * SIMULATION CORE (Existing)
+     */
+    function applyConfig(config) {
+        if(config.alignWeight !== undefined) updateParam('align', config.alignWeight);
+        if(config.cohesionWeight !== undefined) updateParam('cohesion', config.cohesionWeight);
+        if(config.separationWeight !== undefined) updateParam('separation', config.separationWeight);
+        if(config.maxSpeed !== undefined) updateParam('speed', config.maxSpeed);
+        if(config.perceptionRadius !== undefined) updateParam('radius', config.perceptionRadius); // Assuming existing logic had this
+        
+        if(config.colorHue !== undefined) {
+            agents.forEach(a => {
+                a.baseHue = config.colorHue;
+                a.updateColor();
+            });
+        }
+    }
+
+    function updateParam(name, value) {
+        const slider = document.getElementById(`param-${name}`);
+        const display = document.getElementById(`val-${name}`);
+        if(slider && display) {
+            slider.value = value;
+            display.innerText = typeof value === 'number' ? value.toFixed(1) : value;
+            
+            if(name === 'align') params.alignWeight = Number(value);
+            if(name === 'cohesion') params.cohesionWeight = Number(value);
+            if(name === 'separation') params.separationWeight = Number(value);
+            if(name === 'speed') params.maxSpeed = Number(value);
+            if(name === 'radius') params.perceptionRadius = Number(value);
+        }
+    }
+
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    let width, height, agents = [];
+    const numAgents = 150;
+    const mouse = { x: 0, y: 0, active: false };
+    const params = {
+        perceptionRadius: 60, alignWeight: 1.0, cohesionWeight: 0.8,
+        separationWeight: 1.5, maxSpeed: 4, maxForce: 0.1
+    };
+
+    // UI Bindings
+    document.getElementById('param-radius').oninput = function() { params.perceptionRadius = parseFloat(this.value); document.getElementById('val-radius').innerText = this.value; };
+    document.getElementById('param-align').oninput = function() { params.alignWeight = parseFloat(this.value); document.getElementById('val-align').innerText = this.value; };
+    document.getElementById('param-cohesion').oninput = function() { params.cohesionWeight = parseFloat(this.value); document.getElementById('val-cohesion').innerText = this.value; };
+    document.getElementById('param-separation').oninput = function() { params.separationWeight = parseFloat(this.value); document.getElementById('val-separation').innerText = this.value; };
+    document.getElementById('param-speed').oninput = function() { params.maxSpeed = parseFloat(this.value); document.getElementById('val-speed').innerText = this.value; };
+
+    class Vector {
+        constructor(x, y) { this.x = x; this.y = y; }
+        add(v) { this.x += v.x; this.y += v.y; return this; }
+        sub(v) { this.x -= v.x; this.y -= v.y; return this; }
+        mult(n) { this.x *= n; this.y *= n; return this; }
+        div(n) { this.x /= n; this.y /= n; return this; }
+        mag() { return Math.sqrt(this.x * this.x + this.y * this.y); }
+        limit(max) { const m = this.mag(); if (m > max && m !== 0) this.div(m).mult(max); return this; }
+        normalize() { const m = this.mag(); if (m !== 0) this.div(m); return this; }
+        static dist(v1, v2) { const dx = v1.x - v2.x; const dy = v1.y - v2.y; return Math.sqrt(dx*dx + dy*dy); }
+    }
+
+    class Agent {
+        constructor() {
+            this.position = new Vector(Math.random() * width, Math.random() * height);
+            this.velocity = new Vector((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4);
+            this.acceleration = new Vector(0, 0);
+            this.baseHue = Math.random() * 60 + 180; 
+            this.color = `hsl(${this.baseHue}, 100%, 70%)`;
+        }
+        updateColor() {
+            const hueVar = this.baseHue + (Math.random() * 10 - 5);
+            this.color = `hsl(${hueVar}, 100%, 70%)`;
+        }
+        flock(agents) {
+            let alignment = new Vector(0, 0), cohesion = new Vector(0, 0), separation = new Vector(0, 0);
+            let total = 0;
+            for (let other of agents) {
+                if (other === this) continue;
+                let d = Vector.dist(this.position, other.position);
+                if (d < params.perceptionRadius) {
+                    alignment.add(other.velocity);
+                    cohesion.add(other.position);
+                    if (d < params.perceptionRadius / 2) {
+                        let diff = new Vector(this.position.x, this.position.y);
+                        diff.sub(other.position); diff.div(d * d); separation.add(diff);
+                    }
+                    total++;
+                }
+            }
+            if (total > 0) {
+                alignment.div(total).normalize().mult(params.maxSpeed).sub(this.velocity).limit(params.maxForce).mult(params.alignWeight);
+                cohesion.div(total).sub(this.position).normalize().mult(params.maxSpeed).sub(this.velocity).limit(params.maxForce).mult(params.cohesionWeight);
+                separation.div(total).normalize().mult(params.maxSpeed).sub(this.velocity).limit(params.maxForce).mult(params.separationWeight);
+            }
+            this.acceleration.add(alignment).add(cohesion).add(separation);
+            if (mouse.active) {
+                let mouseV = new Vector(mouse.x, mouse.y);
+                let dist = Vector.dist(this.position, mouseV);
+                if (dist < 300) {
+                    let attract = new Vector(mouseV.x, mouseV.y);
+                    attract.sub(this.position).normalize().mult(0.5);
+                    this.acceleration.add(attract);
+                }
+            }
+        }
+        update() {
+            this.position.add(this.velocity);
+            this.velocity.add(this.acceleration).limit(params.maxSpeed);
+            this.acceleration.mult(0);
+            if (this.position.x > width) this.position.x = 0;
+            if (this.position.x < 0) this.position.x = width;
+            if (this.position.y > height) this.position.y = 0;
+            if (this.position.y < 0) this.position.y = height;
+        }
+        draw() {
+            ctx.beginPath(); ctx.arc(this.position.x, this.position.y, 3, 0, Math.PI * 2);
+            ctx.fillStyle = this.color; ctx.fill();
+        }
+    }
+
+    function init() {
+        resize();
+        for (let i = 0; i < numAgents; i++) agents.push(new Agent());
+        loop();
+        document.getElementById('story-prompt').addEventListener('keypress', e => { if (e.key === 'Enter') choreograph(); });
+    }
+    function resize() { width = window.innerWidth; height = window.innerHeight; canvas.width = width; canvas.height = height; }
+    function loop() {
+        ctx.fillStyle = 'rgba(10, 10, 18, 0.2)'; ctx.fillRect(0, 0, width, height);
+        ctx.lineWidth = 0.5;
+        for (let i = 0; i < agents.length; i++) {
+            let agentA = agents[i];
+            agentA.flock(agents); agentA.update(); agentA.draw();
+            if (i % 2 === 0) {
+                for (let j = i + 1; j < agents.length; j++) {
+                    let agentB = agents[j];
+                    let dx = agentA.position.x - agentB.position.x;
+                    let dy = agentA.position.y - agentB.position.y;
+                    if (Math.abs(dx) < 40 && Math.abs(dy) < 40) {
+                        let d = Math.sqrt(dx*dx + dy*dy);
+                        if (d < 40) {
+                            ctx.beginPath(); ctx.moveTo(agentA.position.x, agentA.position.y); ctx.lineTo(agentB.position.x, agentB.position.y);
+                            let alpha = 1 - (d / 40);
+                            ctx.strokeStyle = agentA.color.replace('hsl', 'hsla').replace(')', `, ${alpha * 0.4})`);
+                            ctx.stroke();
+                        }
+                    }
+                }
+            }
+        }
+        requestAnimationFrame(loop);
+    }
+    window.addEventListener('resize', resize);
+    window.addEventListener('mousedown', e => { mouse.active = true; mouse.x = e.clientX; mouse.y = e.clientY; });
+    window.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
+    window.addEventListener('mouseup', () => mouse.active = false);
+    window.addEventListener('touchstart', e => { mouse.active = true; mouse.x = e.touches[0].clientX; mouse.y = e.touches[0].clientY; });
+    window.addEventListener('touchend', () => mouse.active = false);
+
+    init();
+</script>
+</body>
+</html>
