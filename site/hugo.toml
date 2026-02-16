@@ -1,0 +1,56 @@
+baseURL = 'https://ritori2022.github.io/My-Works/'
+languageCode = 'zh-cn'
+title = '喵喵的项目展示'
+theme = 'PaperMod'
+[pagination]
+  pagerSize = 10
+
+[params]
+  env = "production"
+  description = "个人项目展示与记录"
+  author = "喵喵"
+  ShowReadingTime = true
+  ShowShareButtons = false
+  ShowPostNavLinks = true
+  ShowBreadCrumbs = true
+  ShowCodeCopyButtons = true
+  ShowToc = true
+  defaultTheme = "auto"
+  disableThemeToggle = false
+
+  [params.homeInfoParams]
+    Title = "Hi, 欢迎来到喵喵的项目展示 👋"
+    Content = "这里记录了我的各种项目、实验和创作。按时间轴浏览，或选择分类查看。"
+
+  [[params.socialIcons]]
+    name = "github"
+    url = "https://github.com/Ritori2022"
+
+[menu]
+  [[menu.main]]
+    identifier = "projects"
+    name = "项目"
+    url = "/projects/"
+    weight = 10
+  [[menu.main]]
+    identifier = "categories"
+    name = "分类"
+    url = "/categories/"
+    weight = 20
+  [[menu.main]]
+    identifier = "tags"
+    name = "标签"
+    url = "/tags/"
+    weight = 30
+  [[menu.main]]
+    identifier = "archives"
+    name = "归档"
+    url = "/archives/"
+    weight = 40
+
+[outputs]
+  home = ["HTML", "RSS", "JSON"]
+
+[taxonomies]
+  category = "categories"
+  tag = "tags"
