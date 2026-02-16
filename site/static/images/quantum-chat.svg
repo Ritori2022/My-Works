@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="400" viewBox="0 0 800 400">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <rect width="800" height="400" fill="url(#bg)" rx="12"/>
+  <text x="400" y="180" text-anchor="middle" fill="white" font-family="system-ui" font-size="48" font-weight="bold">💬 Quantum Chat</text>
+  <text x="400" y="240" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-family="system-ui" font-size="20">实时加密聊天应用</text>
+  <rect x="200" y="280" width="400" height="4" rx="2" fill="rgba(255,255,255,0.3)"/>
+  <rect x="200" y="280" width="260" height="4" rx="2" fill="rgba(255,255,255,0.8)"/>
+  <text x="400" y="310" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-family="system-ui" font-size="14">React · TypeScript · WebSocket</text>
+</svg>
