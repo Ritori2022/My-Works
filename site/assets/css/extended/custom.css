@@ -1,9 +1,48 @@
-/* Fix CJK character overlap in code blocks */
-pre, code {
-    font-family: "Fira Code", "Source Code Pro", "Noto Sans Mono CJK SC", "Microsoft YaHei", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+/* 加载 CJK 字体 */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400&display=swap');
+
+/*
+ * 修复代码块中 CJK 字符重叠
+ *
+ * 根本原因：等宽字体（Consolas/Menlo 等）无 CJK 字形，
+ * 浏览器 fallback 到比例中文字体后，字符实际宽度（≈1em）
+ * 远大于等宽单元格宽度（≈0.6em），导致字符在行内互相覆盖。
+ *
+ * 解决方案：对代码块使用 CJK 比例字体 + 终端视觉样式，
+ * 让中文字符在自然宽度下渲染，不再被塞进过窄的等宽格。
+ */
+
+pre {
+    overflow-x: auto !important;
+    max-width: 100%;
+    background: #1e1e2e !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 8px !important;
+    padding: 1.2em 1.4em !important;
 }
 
 pre code {
-    letter-spacing: 0.02em;
-    word-break: break-all;
+    /* 用 CJK 优先的字体栈，彻底避免等宽字符格过窄的问题 */
+    font-family:
+        "Noto Sans SC",
+        "PingFang SC",
+        "Hiragino Sans GB",
+        "Microsoft YaHei",
+        ui-monospace, Menlo, Consolas,
+        monospace !important;
+    font-size: 0.88em !important;
+    line-height: 1.85 !important;
+    white-space: pre-wrap !important;   /* 允许折行，避免超宽 */
+    word-break: break-word !important;
+    display: block;
+    background: transparent !important;
+    color: #cdd6f4;
+}
+
+/* 行内代码 */
+:not(pre) > code {
+    font-family:
+        "Noto Sans SC", "PingFang SC", "Microsoft YaHei",
+        ui-monospace, Consolas, monospace !important;
+    font-size: 0.9em !important;
 }
