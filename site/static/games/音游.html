@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>3D 音游生成器 | Cyber Rhythm</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050505; color: white; font-family: 'Segoe UI', sans-serif; user-select: none; }
+        
+        /* UI 层布局 */
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; z-index: 10; }
+        .interactive { pointer-events: auto; cursor: pointer; }
+
+        /* 霓虹与文字效果 */
+        .neon-text { text-shadow: 0 0 10px rgba(0, 255, 255, 0.8), 0 0 20px rgba(0, 255, 255, 0.4); }
+        
+        /* 启动画面 */
+        #start-screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 50; transition: opacity 0.5s ease; }
+        
+        /* 游戏内 HUD */
+        #score-board { padding: 24px; text-align: right; }
+        #combo-container { position: absolute; top: 25%; left: 50%; transform: translate(-50%, -50%) scale(0.8); text-align: center; opacity: 0; transition: transform 0.1s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        #feedback-text { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); font-size: 3rem; font-weight: 900; opacity: 0; letter-spacing: 2px; -webkit-text-stroke: 1px rgba(255,255,255,0.5); }
+
+        /* 触摸控制区 */
+        #touch-controls { display: flex; width: 100%; height: 35vh; pointer-events: none; }
+        .touch-lane { flex: 1; border-right: 1px solid rgba(255,255,255,0.05); position: relative; pointer-events: auto; background: linear-gradient(to top, rgba(0,0,0,0.8), transparent); }
+        .touch-lane:last-child { border-right: none; }
+        .touch-feedback { position: absolute; bottom: 0; width: 100%; height: 0%; background: linear-gradient(to top, rgba(0,255,255,0.3), transparent); transition: height 0.05s; }
+        
+        /* 按钮样式 */
+        .btn-primary { background: linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%); color: white; border: none; box-shadow: 0 0 15px rgba(6,182,212,0.4); }
+        .btn-primary:hover { transform: scale(1.02); box-shadow: 0 0 25px rgba(6,182,212,0.6); }
+        .btn-secondary { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; }
+        .btn-secondary:hover { background: rgba(255,255,255,0.2); border-color: white; }
+
+        /* 动画关键帧 */
+        @keyframes pulse-hit { 0% { transform: translate(-50%, -50%) scale(1.5); opacity: 1; } 100% { transform: translate(-50%, -50%) scale(1); opacity: 0; } }
+        .hit-anim { animation: pulse-hit 0.4s ease-out forwards; }
+        
+        /* 加载动画 */
+        .loader { width: 48px; height: 48px; border: 5px solid #FFF; border-bottom-color: #06b6d4; border-radius: 50%; display: none; animation: rotation 1s linear infinite; margin-bottom: 20px; }
+        @keyframes rotation { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <!-- WebGL 容器 -->
+    <div id="canvas-container" class="w-full h-full absolute top-0 left-0 z-0 bg-gray-900"></div>
+
+    <!-- 界面层 -->
+    <div id="ui-layer">
+        <!-- 顶部信息 -->
+        <div class="flex justify-between w-full items-start">
+            <div class="p-6">
+                <h1 class="text-2xl font-black italic text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500" style="filter: drop-shadow(0 0 5px rgba(0,255,255,0.5));">CYBER<br>RHYTHM</h1>
+                <div class="mt-2 flex items-center gap-2">
+                    <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                    <span class="text-xs text-gray-400 font-mono">SYSTEM ONLINE</span>
+                </div>
+            </div>
+            
+            <div id="score-board">
+                <div class="text-6xl font-mono font-bold text-white leading-none tracking-tighter" id="score">000000</div>
+                <div class="text-right text-cyan-500 text-sm font-bold tracking-[0.5em] mt-1">SCORE</div>
+                <div class="h-1 w-full bg-gray-800 mt-2 rounded overflow-hidden">
+                    <div id="progress-bar" class="h-full bg-gradient-to-r from-cyan-500 to-blue-600 w-0 transition-all duration-200"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 中间反馈区 -->
+        <div id="combo-container">
+            <div class="text-8xl font-black italic text-yellow-400 drop-shadow-[0_0_10px_rgba(250,204,21,0.8)]" id="combo-count">0</div>
+            <div class="text-2xl font-bold text-white uppercase tracking-widest bg-black/50 px-4 py-1 rounded">Combo</div>
+        </div>
+        
+        <div id="feedback-text">PERFECT</div>
+
+        <!-- 底部操作区 -->
+        <div id="touch-controls">
+            <div class="touch-lane" data-key="KeyD">
+                <div class="touch-feedback"></div>
+                <div class="absolute bottom-10 left-0 w-full text-center pointer-events-none">
+                    <div class="text-2xl font-bold text-white/30">D</div>
+                </div>
+            </div>
+            <div class="touch-lane" data-key="KeyF">
+                <div class="touch-feedback"></div>
+                <div class="absolute bottom-10 left-0 w-full text-center pointer-events-none">
+                    <div class="text-2xl font-bold text-white/30">F</div>
+                </div>
+            </div>
+            <div class="touch-lane" data-key="KeyJ">
+                <div class="touch-feedback"></div>
+                <div class="absolute bottom-10 left-0 w-full text-center pointer-events-none">
+                    <div class="text-2xl font-bold text-white/30">J</div>
+                </div>
+            </div>
+            <div class="touch-lane" data-key="KeyK">
+                <div class="touch-feedback"></div>
+                <div class="absolute bottom-10 left-0 w-full text-center pointer-events-none">
+                    <div class="text-2xl font-bold text-white/30">K</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 菜单层 -->
+    <div id="start-screen">
+        <div class="w-full max-w-md px-8 py-10 bg-black/40 border border-white/10 backdrop-blur-xl rounded-2xl shadow-2xl text-center">
+            <h1 class="text-5xl font-black mb-2 text-white tracking-tighter italic">NEON<span class="text-cyan-400">BEATS</span></h1>
+            <p class="text-blue-200/70 mb-8 text-sm tracking-wide">PROCEDURAL RHYTHM ENGINE // v2.0</p>
+            
+            <div class="loader mx-auto" id="loader"></div>
+            <div id="loading-text" class="text-cyan-400 text-sm font-mono mb-6 hidden animate-pulse">ANALYZING WAVEFORM...</div>
+
+            <div id="menu-buttons" class="space-y-4">
+                <button id="demo-btn" class="interactive w-full py-4 rounded-xl font-bold text-lg btn-primary flex items-center justify-center gap-3 transition-all">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" /></svg>
+                    <span>试玩示例 (Demo)</span>
+                </button>
+
+                <div class="relative">
+                    <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-white/10"></div></div>
+                    <div class="relative flex justify-center text-xs uppercase"><span class="bg-black/50 px-2 text-gray-500">Or</span></div>
+                </div>
+
+                <button id="upload-btn" class="interactive w-full py-3 rounded-xl font-bold text-base btn-secondary flex items-center justify-center gap-2 transition-all">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                    <span>上传本地音乐</span>
+                </button>
+            </div>
+            
+            <div class="mt-8 text-xs text-gray-500 font-mono">
+                CONTROLS: [D] [F] [J] [K] / TOUCH SCREEN
+            </div>
+
+            <input type="file" id="file-input" accept="audio/*" class="hidden">
+            
+            <div id="restart-container" class="hidden mt-4">
+                <button id="restart-btn" class="interactive w-full py-3 bg-white text-black font-bold rounded-lg hover:bg-gray-200 transition">返回主菜单</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // === 游戏配置 ===
+        const CONFIG = {
+            laneCount: 4,
+            laneWidth: 3.0,     // 增加轨道宽度，更清晰
+            trackLength: 160,   // 增加视野深度
+            noteSpeed: 45,      // 音符飞行速度
+            cameraY: 14,        // 相机高度
+            cameraZ: 24,        // 相机距离
+            colors: [0x00ffff, 0xff00ff, 0xffff00, 0x00ff00], // 经典4色
+            hitWindow: { perfect: 0.08, good: 0.18, miss: 0.35 }
+        };
+
+        const DEMO_SONG = 'https://cdn.jsdelivr.net/gh/mrdoob/three.js@master/examples/sounds/376737_Skullbeatz___Bad_Cat_Maste.mp3';
+
+        // === 全局状态 ===
+        let state = {
+            isPlaying: false,
+            score: 0,
+            combo: 0,
+            notes: [],      // 音符数据
+            startTime: 0,   // 音频开始的 audioContext 时间
+            duration: 0     // 歌曲总时长
+        };
+
+        // === 系统组件 ===
+        let audioCtx = null;
+        let audioBuffer = null;
+        let audioSource = null;
+        let analyser = null;
+        
+        let scene, camera, renderer;
+        let trackGroup, noteGroup, effectGroup, floorGroup;
+        let laneHighlights = [];
+        let gridHelper;
+
+        // === 3D 场景初始化 ===
+        function initScene() {
+            const container = document.getElementById('canvas-container');
+
+            // 1. 场景与雾效
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x050508); // 深色背景
+            scene.fog = new THREE.FogExp2(0x050508, 0.01); // 迷雾
+
+            // 2. 相机
+            camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, CONFIG.cameraY, CONFIG.cameraZ);
+            camera.lookAt(0, 0, -30); // 向前下方看
+
+            // 3. 渲染器
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.outputEncoding = THREE.sRGBEncoding;
+            container.appendChild(renderer.domElement);
+
+            // 4. 灯光
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(0, 50, 20);
+            scene.add(dirLight);
+
+            // 5. 组结构
+            floorGroup = new THREE.Group();
+            trackGroup = new THREE.Group();
+            noteGroup = new THREE.Group();
+            effectGroup = new THREE.Group();
+            scene.add(floorGroup);
+            scene.add(trackGroup);
+            scene.add(noteGroup);
+            scene.add(effectGroup);
+
+            // 6. 创建环境与轨道
+            createEnvironment();
+            createTracks();
+
+            // 7. 窗口调整
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+
+            // 启动渲染循环
+            requestAnimationFrame(renderLoop);
+        }
+
+        function createEnvironment() {
+            // 移动的网格地面
+            gridHelper = new THREE.GridHelper(400, 200, 0x222222, 0x111111);
+            gridHelper.position.y = -2;
+            gridHelper.position.z = -100;
+            floorGroup.add(gridHelper);
+
+            // 远处的装饰柱子（增加速度感）
+            const pillarGeo = new THREE.BoxGeometry(1, 100, 1);
+            const pillarMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
+            for(let i=0; i<20; i++) {
+                const p = new THREE.Mesh(pillarGeo, pillarMat);
+                p.position.set(i%2===0 ? 40 : -40, 0, -i * 20);
+                floorGroup.add(p);
+            }
+        }
+
+        // === 关键修复：创建可见的轨道 ===
+        function createTracks() {
+            const totalWidth = CONFIG.laneCount * CONFIG.laneWidth;
+            const startX = -totalWidth / 2 + CONFIG.laneWidth / 2;
+
+            // 1. 轨道底板 (半透明发光板，确保玩家看得到路)
+            const roadGeo = new THREE.PlaneGeometry(totalWidth, 300);
+            const roadMat = new THREE.MeshBasicMaterial({ 
+                color: 0x000000, 
+                transparent: true, 
+                opacity: 0.8 
+            });
+            const road = new THREE.Mesh(roadGeo, roadMat);
+            road.rotation.x = -Math.PI / 2;
+            road.position.z = -100; // 延伸到远处
+            road.position.y = -0.1;
+            trackGroup.add(road);
+
+            // 2. 轨道边缘发光条
+            const borderGeo = new THREE.BoxGeometry(0.2, 0.2, 300);
+            const borderMat = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+            const leftBorder = new THREE.Mesh(borderGeo, borderMat);
+            leftBorder.position.set(-totalWidth/2 - 0.1, 0, -100);
+            trackGroup.add(leftBorder);
+            
+            const rightBorder = new THREE.Mesh(borderGeo, borderMat);
+            rightBorder.position.set(totalWidth/2 + 0.1, 0, -100);
+            trackGroup.add(rightBorder);
+
+            // 3. 判定线 (Hit Line)
+            const hitLineGeo = new THREE.BoxGeometry(totalWidth + 1, 0.15, 0.15);
+            const hitLineMat = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
+            const hitLine = new THREE.Mesh(hitLineGeo, hitLineMat);
+            hitLine.position.z = 0; // Z=0 是判定点
+            trackGroup.add(hitLine);
+
+            // 4. 轨道分割线和高亮反馈
+            for (let i = 0; i < CONFIG.laneCount; i++) {
+                const x = startX + i * CONFIG.laneWidth;
+                
+                // 分割线
+                if (i > 0) {
+                    const lineGeo = new THREE.PlaneGeometry(0.05, 300);
+                    const lineMat = new THREE.MeshBasicMaterial({ color: 0x444444 });
+                    const line = new THREE.Mesh(lineGeo, lineMat);
+                    line.rotation.x = -Math.PI / 2;
+                    line.position.set(startX + (i * CONFIG.laneWidth) - CONFIG.laneWidth/2, -0.05, -100);
+                    trackGroup.add(line);
+                }
+
+                // 按键高亮 (初始透明)
+                const highGeo = new THREE.PlaneGeometry(CONFIG.laneWidth * 0.95, 20);
+                const highMat = new THREE.MeshBasicMaterial({ 
+                    color: CONFIG.colors[i], 
+                    transparent: true, 
+                    opacity: 0.0,
+                    side: THREE.DoubleSide,
+                    blending: THREE.AdditiveBlending
+                });
+                const highlight = new THREE.Mesh(highGeo, highMat);
+                highlight.rotation.x = -Math.PI / 2;
+                highlight.position.set(x, -0.04, -10); // 稍微浮起
+                trackGroup.add(highlight);
+                laneHighlights.push(highlight);
+            }
+        }
+
+        // === 核心：音符对象 ===
+        function createNoteMesh(lane) {
+            const geometry = new THREE.BoxGeometry(CONFIG.laneWidth * 0.85, 0.6, 1.2); // 扁平的方块
+            const material = new THREE.MeshPhongMaterial({ 
+                color: 0xffffff, // 基础白
+                emissive: CONFIG.colors[lane], // 发出对应轨道的颜色
+                emissiveIntensity: 0.8,
+                shininess: 80
+            });
+            
+            // 添加一个线框，增加科技感
+            const edges = new THREE.EdgesGeometry(geometry);
+            const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0xffffff }));
+            
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.add(line);
+            
+            const totalWidth = CONFIG.laneCount * CONFIG.laneWidth;
+            const startX = -totalWidth / 2 + CONFIG.laneWidth / 2;
+            mesh.position.x = startX + lane * CONFIG.laneWidth;
+            mesh.position.y = 0.3;
+            
+            return mesh;
+        }
+
+        // === 粒子特效 ===
+        function createExplosion(pos, color) {
+            const count = 10;
+            const geo = new THREE.PlaneGeometry(0.3, 0.3);
+            const mat = new THREE.MeshBasicMaterial({ color: color, transparent: true, side: THREE.DoubleSide });
+            
+            for(let i=0; i<count; i++) {
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.position.copy(pos);
+                // 随机向四周飞散
+                mesh.userData.vel = new THREE.Vector3(
+                    (Math.random()-0.5) * 1.5, 
+                    Math.random() * 1.5, 
+                    (Math.random()-0.5) * 1.5
+                );
+                effectGroup.add(mesh);
+                
+                // 简单的清理逻辑
+                setTimeout(() => { if(mesh.parent) mesh.parent.remove(mesh); }, 500);
+            }
+            
+            // 添加一个光圈
+            const ringGeo = new THREE.RingGeometry(0.5, 0.7, 16);
+            const ringMat = new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 1, side: THREE.DoubleSide });
+            const ring = new THREE.Mesh(ringGeo, ringMat);
+            ring.position.copy(pos);
+            ring.position.y = 0.1;
+            ring.rotation.x = -Math.PI/2;
+            effectGroup.add(ring);
+            
+            // 光圈动画
+            const animateRing = () => {
+                if(!ring.parent) return;
+                ring.scale.multiplyScalar(1.1);
+                ring.material.opacity -= 0.05;
+                if(ring.material.opacity <= 0) ring.parent.remove(ring);
+                else requestAnimationFrame(animateRing);
+            };
+            animateRing();
+        }
+
+        // === 音频与游戏逻辑 ===
+        
+        function ensureAudioContext() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            return audioCtx;
+        }
+
+        async function loadAudio(url) {
+            setLoading(true, "正在下载音轨...");
+            const ctx = ensureAudioContext();
+            
+            try {
+                const res = await fetch(url);
+                const buffer = await res.arrayBuffer();
+                decodeAudio(buffer);
+            } catch(e) {
+                alert("下载失败");
+                setLoading(false);
+            }
+        }
+
+        function handleFile(file) {
+            setLoading(true, "读取文件中...");
+            const ctx = ensureAudioContext();
+            const reader = new FileReader();
+            reader.onload = (e) => decodeAudio(e.target.result);
+            reader.readAsArrayBuffer(file);
+        }
+
+        function decodeAudio(arrayBuffer) {
+            setLoading(true, "AI 解析生成谱面...");
+            audioCtx.decodeAudioData(arrayBuffer, (buffer) => {
+                audioBuffer = buffer;
+                state.duration = buffer.duration;
+                generateChart(buffer);
+                startGame();
+            }, (e) => {
+                alert("音频解码错误");
+                setLoading(false);
+            });
+        }
+
+        function generateChart(buffer) {
+            state.notes = [];
+            const data = buffer.getChannelData(0);
+            const sampleRate = buffer.sampleRate;
+            const step = Math.floor(sampleRate / 20); // 50ms 采样
+            
+            // 能量检测算法
+            for (let i = 0; i < data.length; i += step) {
+                let sum = 0;
+                // 计算局部 RMS
+                for (let j = 0; j < step && i+j < data.length; j++) {
+                    sum += data[i+j] * data[i+j];
+                }
+                const rms = Math.sqrt(sum / step);
+                
+                // 阈值判断 (简单的自动谱面)
+                if (rms > 0.15) { 
+                    const time = i / sampleRate;
+                    
+                    // 避免太密集
+                    const lastNote = state.notes[state.notes.length-1];
+                    if (!lastNote || (time - lastNote.time > 0.15)) {
+                        // 随机轨道，但有些规律
+                        const lane = Math.floor(time * 3.14159 * 100) % 4;
+                        state.notes.push({
+                            time: time,
+                            lane: lane,
+                            hit: false,
+                            mesh: null
+                        });
+                    }
+                }
+            }
+            console.log("Generated notes:", state.notes.length);
+        }
+
+        function startGame() {
+            setLoading(false);
+            document.getElementById('start-screen').style.opacity = '0';
+            setTimeout(() => document.getElementById('start-screen').style.display = 'none', 500);
+
+            // 重置状态
+            state.score = 0;
+            state.combo = 0;
+            state.isPlaying = true;
+            updateScoreUI();
+
+            // 创建音源
+            audioSource = audioCtx.createBufferSource();
+            audioSource.buffer = audioBuffer;
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 256;
+            audioSource.connect(analyser);
+            analyser.connect(audioCtx.destination);
+
+            // 延迟计算: 音符飞越轨道所需时间
+            const travelTime = CONFIG.trackLength / CONFIG.noteSpeed;
+            const now = audioCtx.currentTime;
+            state.startTime = now + travelTime; // 音乐在 travelTime 后开始，确保第一个音符能从远处飞来
+
+            // 实际上我们希望音乐立刻播放，或者稍等一下
+            // 方案B：音乐立即播放，音符逻辑位置 = (noteTime - (currentTime - startTime))
+            // 我们使用 方案A：让游戏逻辑时间 = audioContext.currentTime - startTime
+            // 为了简单同步，我们直接播放
+            audioSource.start(0);
+            state.startTime = now; // 记录播放开始的绝对时间
+
+            audioSource.onended = () => {
+                endGame();
+            };
+        }
+
+        function endGame() {
+            state.isPlaying = false;
+            document.getElementById('start-screen').style.display = 'flex';
+            setTimeout(() => document.getElementById('start-screen').style.opacity = '1', 50);
+            document.getElementById('menu-buttons').classList.add('hidden');
+            document.getElementById('restart-container').classList.remove('hidden');
+            document.getElementById('loading-text').innerText = `FINAL SCORE: ${state.score}`;
+            document.getElementById('loading-text').style.display = 'block';
+        }
+
+        // === 渲染与物理循环 ===
+        function renderLoop() {
+            requestAnimationFrame(renderLoop);
+            
+            if (state.isPlaying) {
+                updateGameLogic();
+            }
+
+            // 简单的视觉律动
+            if (state.isPlaying && analyser) {
+                const data = new Uint8Array(analyser.frequencyBinCount);
+                analyser.getByteFrequencyData(data);
+                const bass = data[10] / 255; // 获取低频
+                
+                // 地面和背景随低音震动
+                gridHelper.position.z = (gridHelper.position.z + 0.5 + bass) % 20;
+                if (bass > 0.5) {
+                    camera.position.y = CONFIG.cameraY + Math.random() * 0.2;
+                } else {
+                    camera.position.y += (CONFIG.cameraY - camera.position.y) * 0.1;
+                }
+            }
+
+            // 渲染
+            renderer.render(scene, camera);
+        }
+
+        function updateGameLogic() {
+            const now = audioCtx.currentTime;
+            // 游戏逻辑时间：音乐已经播放了多久
+            const songTime = now - state.startTime;
+            // 进度条
+            if (state.duration > 0) {
+                const pct = (songTime / state.duration) * 100;
+                document.getElementById('progress-bar').style.width = `${pct}%`;
+            }
+
+            // 预判时间窗口: 音乐时间 + 飞行时间 = 音符生成的“源头”时间
+            // 我们实际上是反过来：音符位置 Z = (NoteTime - SongTime) * Speed
+            // 如果 NoteTime > SongTime, Z 是负数 (远方)
+            // 如果 NoteTime == SongTime, Z = 0 (判定线)
+            
+            const visibleRange = CONFIG.trackLength / CONFIG.noteSpeed; // 例如 3秒
+
+            state.notes.forEach(note => {
+                const timeDiff = note.time - songTime; // 距离被击中还有多少秒
+
+                // 1. 音符实例化 (进入视野)
+                if (timeDiff < visibleRange && timeDiff > -0.5 && !note.hit) {
+                    if (!note.mesh) {
+                        note.mesh = createNoteMesh(note.lane);
+                        noteGroup.add(note.mesh);
+                    }
+                    // 更新位置: 负Z是远方，0是近处
+                    // 当 timeDiff = 2s, Speed = 50 => Z = -100
+                    note.mesh.position.z = -timeDiff * CONFIG.noteSpeed;
+                } 
+                // 2. 音符销毁 (Miss 或 已击中)
+                else if (note.mesh) {
+                    // 如果已经飞过判定线太远 (Miss)
+                    if (timeDiff < -CONFIG.hitWindow.miss && !note.hit) {
+                        note.hit = true;
+                        handleMiss();
+                        noteGroup.remove(note.mesh);
+                        note.mesh = null;
+                    } 
+                    // 如果已经被击中，且播放完特效，移除Mesh
+                    else if (note.hit) {
+                        noteGroup.remove(note.mesh);
+                        note.mesh = null;
+                    }
+                }
+            });
+
+            // 3. 特效物理
+            effectGroup.children.forEach(child => {
+                if (child.userData.vel) {
+                    child.position.add(child.userData.vel);
+                    child.userData.vel.y -= 0.05; // 重力
+                    child.scale.multiplyScalar(0.9); // 变小
+                }
+            });
+
+            // 4. 高亮条淡出
+            laneHighlights.forEach(h => {
+                if(h.material.opacity > 0) h.material.opacity -= 0.1;
+            });
+        }
+
+        // === 输入判定 ===
+        function handleInput(lane) {
+            if (!state.isPlaying) return;
+            
+            // 视觉反馈
+            laneHighlights[lane].material.opacity = 1;
+            triggerTouchFeedback(lane);
+
+            const now = audioCtx.currentTime;
+            const songTime = now - state.startTime;
+            
+            // 寻找该轨道上最近的音符
+            // 过滤条件：未击中，且在判定窗口内
+            // 我们找绝对值差异最小的那个
+            let targetNote = null;
+            let minDiff = Infinity;
+
+            for (const note of state.notes) {
+                if (note.lane === lane && !note.hit) {
+                    const diff = Math.abs(note.time - songTime);
+                    // 只有进入 Miss 窗口内的才算有效点击，否则可能是空挥
+                    if (diff < CONFIG.hitWindow.miss) {
+                        if (diff < minDiff) {
+                            minDiff = diff;
+                            targetNote = note;
+                        }
+                    }
+                }
+            }
+
+            if (targetNote) {
+                targetNote.hit = true;
+                
+                if (targetNote.mesh) {
+                    createExplosion(targetNote.mesh.position.clone(), CONFIG.colors[lane]);
+                    // 立即隐藏，物理循环中会移除
+                    targetNote.mesh.visible = false; 
+                }
+
+                // 计分
+                if (minDiff < CONFIG.hitWindow.perfect) {
+                    showFeedback("PERFECT", "#00ffff", 300);
+                } else if (minDiff < CONFIG.hitWindow.good) {
+                    showFeedback("GOOD", "#00ff00", 100);
+                } else {
+                    // 只是 Bad，不断连
+                    showFeedback("BAD", "#aaaaaa", 50);
+                    state.combo = 0; // 严格模式断连
+                }
+            }
+        }
+
+        function handleMiss() {
+            state.combo = 0;
+            showFeedback("MISS", "#ff0044", 0);
+        }
+
+        function showFeedback(text, color, points) {
+            state.score += points;
+            if (points > 0) state.combo++;
+            updateScoreUI();
+
+            const fb = document.getElementById('feedback-text');
+            fb.innerText = text;
+            fb.style.color = color;
+            
+            // 重置动画
+            fb.classList.remove('hit-anim');
+            void fb.offsetWidth;
+            fb.classList.add('hit-anim');
+
+            const cb = document.getElementById('combo-container');
+            if (state.combo > 2) {
+                document.getElementById('combo-count').innerText = state.combo;
+                cb.style.opacity = 1;
+                cb.style.transform = "translate(-50%, -50%) scale(1.2)";
+                setTimeout(() => cb.style.transform = "translate(-50%, -50%) scale(1)", 100);
+            } else {
+                cb.style.opacity = 0;
+            }
+        }
+
+        function updateScoreUI() {
+            document.getElementById('score').innerText = state.score.toString().padStart(6, '0');
+        }
+
+        function triggerTouchFeedback(lane) {
+            const keys = ['KeyD', 'KeyF', 'KeyJ', 'KeyK'];
+            const key = keys[lane];
+            const el = document.querySelector(`.touch-lane[data-key="${key}"] .touch-feedback`);
+            if(el) {
+                el.style.height = '100%';
+                setTimeout(() => el.style.height = '0%', 50);
+            }
+        }
+
+        // === UI 交互事件 ===
+        function setLoading(isLoading, text) {
+            const loader = document.getElementById('loader');
+            const txt = document.getElementById('loading-text');
+            const menus = document.getElementById('menu-buttons');
+            
+            if (isLoading) {
+                loader.style.display = 'block';
+                txt.innerText = text;
+                txt.style.display = 'block';
+                menus.style.display = 'none';
+            } else {
+                loader.style.display = 'none';
+                txt.style.display = 'none';
+                menus.style.display = 'block';
+            }
+        }
+
+        // 初始化
+        initScene();
+
+        // 按钮绑定
+        document.getElementById('demo-btn').addEventListener('click', () => loadAudio(DEMO_SONG));
+        
+        document.getElementById('upload-btn').addEventListener('click', () => {
+            document.getElementById('file-input').click();
+        });
+
+        document.getElementById('file-input').addEventListener('change', (e) => {
+            if (e.target.files[0]) handleFile(e.target.files[0]);
+        });
+
+        document.getElementById('restart-btn').addEventListener('click', () => {
+            document.getElementById('restart-container').classList.add('hidden');
+            document.getElementById('menu-buttons').classList.remove('hidden');
+            document.getElementById('loading-text').style.display = 'none';
+            // 清理音符
+            noteGroup.clear();
+            effectGroup.clear();
+        });
+
+        // 键盘绑定
+        window.addEventListener('keydown', (e) => {
+            if (e.repeat) return;
+            const map = { 'KeyD': 0, 'KeyF': 1, 'KeyJ': 2, 'KeyK': 3 };
+            if (map.hasOwnProperty(e.code)) handleInput(map[e.code]);
+        });
+
+        // 触摸绑定
+        document.getElementById('touch-controls').addEventListener('touchstart', (e) => {
+            e.preventDefault(); // 防止缩放
+            const t = e.target.closest('.touch-lane');
+            if (t) {
+                const k = t.getAttribute('data-key');
+                const map = { 'KeyD': 0, 'KeyF': 1, 'KeyJ': 2, 'KeyK': 3 };
+                handleInput(map[k]);
+            }
+        }, { passive: false });
+
+    </script>
+</body>
+</html>

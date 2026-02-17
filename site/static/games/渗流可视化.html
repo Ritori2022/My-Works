@@ -1,0 +1,343 @@
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { RefreshCw, Info, Droplets, Grid as GridIcon, Maximize2 } from 'lucide-react';
+
+/**
+ * 并查集 (Union-Find) 数据结构
+ * 用于高效管理和查询不相交集合
+ */
+class UnionFind {
+  constructor(size) {
+    this.parent = new Int32Array(size);
+    this.sz = new Int32Array(size); // 记录每个树的大小，用于加权合并
+    for (let i = 0; i < size; i++) {
+      this.parent[i] = i;
+      this.sz[i] = 1;
+    }
+  }
+
+  // 查找根节点 (带路径压缩)
+  find(p) {
+    let root = p;
+    while (root !== this.parent[root]) {
+      root = this.parent[root];
+    }
+    // 路径压缩
+    while (p !== root) {
+      let newp = this.parent[p];
+      this.parent[p] = root;
+      p = newp;
+    }
+    return root;
+  }
+
+  // 合并两个集合
+  union(p, q) {
+    let rootP = this.find(p);
+    let rootQ = this.find(q);
+    if (rootP === rootQ) return;
+
+    // 小树挂在大树下
+    if (this.sz[rootP] < this.sz[rootQ]) {
+      this.parent[rootP] = rootQ;
+      this.sz[rootQ] += this.sz[rootP];
+    } else {
+      this.parent[rootQ] = rootP;
+      this.sz[rootP] += this.sz[rootQ];
+    }
+  }
+
+  // 判断是否连通
+  connected(p, q) {
+    return this.find(p) === this.find(q);
+  }
+}
+
+const PercolationSim = () => {
+  // --- 状态管理 ---
+  const [gridSize, setGridSize] = useState(50); // 网格 N x N
+  const [probability, setProbability] = useState(0.50); // 开放概率 p
+  const [percolates, setPercolates] = useState(false); // 系统是否渗流
+  const [openSitesCount, setOpenSitesCount] = useState(0); // 开放点统计
+  const [simulationKey, setSimulationKey] = useState(0); // 用于强制重新生成
+  
+  const canvasRef = useRef(null);
+  const containerRef = useRef(null);
+
+  // 临界阈值常量 (2D Site Percolation)
+  const CRITICAL_THRESHOLD = 0.592746;
+
+  // --- 核心模拟逻辑 ---
+  const simulationData = useMemo(() => {
+    const totalSites = gridSize * gridSize;
+    const virtualTop = totalSites;
+    const virtualBottom = totalSites + 1;
+    
+    const uf = new UnionFind(totalSites + 2); 
+    const ufFullState = new UnionFind(totalSites + 1); 
+
+    // 1. 生成网格状态
+    const grid = new Uint8Array(totalSites); // 0: blocked, 1: open
+    let openCount = 0;
+
+    for (let i = 0; i < totalSites; i++) {
+      if (Math.random() < probability) {
+        grid[i] = 1;
+        openCount++;
+      } else {
+        grid[i] = 0;
+      }
+    }
+
+    // 2. 构建连接
+    const getIndex = (row, col) => row * gridSize + col;
+
+    for (let row = 0; row < gridSize; row++) {
+      for (let col = 0; col < gridSize; col++) {
+        const idx = getIndex(row, col);
+        
+        if (grid[idx] === 0) continue;
+
+        // 第一行连接虚拟顶部
+        if (row === 0) {
+          uf.union(idx, virtualTop);
+          ufFullState.union(idx, virtualTop);
+        }
+        
+        // 最后一行连接虚拟底部
+        if (row === gridSize - 1) {
+          uf.union(idx, virtualBottom);
+        }
+
+        // 连接右方
+        if (col < gridSize - 1) {
+          const rightIdx = getIndex(row, col + 1);
+          if (grid[rightIdx] === 1) {
+            uf.union(idx, rightIdx);
+            ufFullState.union(idx, rightIdx);
+          }
+        }
+
+        // 连接下方
+        if (row < gridSize - 1) {
+          const downIdx = getIndex(row + 1, col);
+          if (grid[downIdx] === 1) {
+            uf.union(idx, downIdx);
+            ufFullState.union(idx, downIdx);
+          }
+        }
+      }
+    }
+
+    const doesPercolate = uf.connected(virtualTop, virtualBottom);
+
+    return {
+      grid,
+      ufFullState,
+      doesPercolate,
+      openCount,
+      virtualTop
+    };
+  }, [gridSize, probability, simulationKey]); 
+
+  // --- 绘制逻辑 ---
+  const drawGrid = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    // 稳健的尺寸计算：确保即使容器尺寸获取失败，也有默认值
+    const containerWidth = containerRef.current?.clientWidth || 0;
+    // 留出一些边距，且限制最大宽度为 600px
+    // 最小宽度设为 300px，防止在极小窗口下崩溃
+    const size = Math.max(300, Math.min(containerWidth - 32, 600)); 
+    
+    // 设置 Canvas 的显示尺寸和缓冲区尺寸
+    canvas.width = size;
+    canvas.height = size;
+    canvas.style.width = `${size}px`;
+    canvas.style.height = `${size}px`;
+
+    const ctx = canvas.getContext('2d');
+    // 确保上下文存在
+    if (!ctx) return;
+
+    const cellSize = size / gridSize;
+    const { grid, ufFullState, virtualTop } = simulationData;
+
+    // 清空画布 (背景色)
+    ctx.fillStyle = '#1f2937'; 
+    ctx.fillRect(0, 0, size, size);
+
+    for (let row = 0; row < gridSize; row++) {
+      for (let col = 0; col < gridSize; col++) {
+        const idx = row * gridSize + col;
+        const x = col * cellSize;
+        const y = row * cellSize;
+
+        // 为了避免浮点数缝隙，使用 floor/ceil 微调
+        const w = Math.ceil(cellSize);
+        const h = Math.ceil(cellSize);
+
+        if (grid[idx] === 0) {
+          // 阻塞 (黑色)
+          ctx.fillStyle = '#111827'; 
+        } else {
+          // 开放
+          const isFull = ufFullState.connected(idx, virtualTop);
+          if (isFull) {
+            // 充满水 (蓝色)
+            ctx.fillStyle = '#3b82f6'; 
+          } else {
+            // 开放但无水 (白色)
+            ctx.fillStyle = '#ffffff'; 
+          }
+        }
+
+        ctx.fillRect(Math.floor(x), Math.floor(y), w, h);
+      }
+    }
+  };
+
+  // --- 副作用 ---
+  useEffect(() => {
+    setPercolates(simulationData.doesPercolate);
+    setOpenSitesCount(simulationData.openCount);
+    
+    // 延迟一小段时间绘制，确保 DOM 布局已完成
+    const timer = setTimeout(() => {
+        drawGrid();
+    }, 10);
+    
+    return () => clearTimeout(timer);
+  }, [simulationData]);
+
+  // 监听窗口大小变化
+  useEffect(() => {
+    const handleResize = () => requestAnimationFrame(drawGrid);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [simulationData]);
+
+  // 处理函数
+  const handleRegenerate = () => setSimulationKey(p => p + 1);
+  const handleProbChange = (e) => setProbability(parseFloat(e.target.value));
+  const handleSizeChange = (e) => setGridSize(parseInt(e.target.value));
+
+  return (
+    // 使用 h-screen 和 flex 布局，但在移动端允许滚动 (min-h-screen)
+    <div className="flex flex-col lg:flex-row min-h-screen bg-gray-50 text-gray-800 font-sans">
+      
+      {/* 左侧控制面板 */}
+      <div className="w-full lg:w-80 bg-white shadow-xl z-10 flex flex-col flex-none border-r border-gray-200">
+        <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700 text-white">
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Droplets size={24} />
+            渗流理论
+          </h1>
+          <p className="text-blue-100 text-sm mt-1">二维点渗流可视化</p>
+        </div>
+
+        <div className="p-6 space-y-6">
+          {/* 状态指示器 */}
+          <div className={`p-4 rounded-lg border-l-4 shadow-sm transition-all duration-300 ${percolates ? 'bg-blue-50 border-blue-500' : 'bg-gray-100 border-gray-400'}`}>
+            <div className="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-1">系统状态</div>
+            <div className={`text-xl font-bold flex items-center gap-2 ${percolates ? 'text-blue-700' : 'text-gray-600'}`}>
+              {percolates ? (
+                <>
+                  <span className="relative flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
+                  </span>
+                  系统已渗流
+                </>
+              ) : (
+                <>
+                  <span className="h-3 w-3 rounded-full bg-gray-400"></span>
+                  系统阻塞
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* 概率 p */}
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                <Maximize2 size={16} />
+                开放概率 (p)
+              </label>
+              <span className="text-lg font-mono font-bold text-blue-600">{probability.toFixed(3)}</span>
+            </div>
+            <input
+              type="range" min="0" max="1" step="0.005"
+              value={probability} onChange={handleProbChange}
+              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+            />
+            <div className="flex justify-between text-xs text-gray-400 mt-1 font-mono">
+              <span>0%</span>
+              <span className="text-red-400 font-bold">Pc ≈ 0.593</span>
+              <span>100%</span>
+            </div>
+          </div>
+
+          {/* 网格大小 */}
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                <GridIcon size={16} />
+                网格大小 (N)
+              </label>
+              <span className="text-sm font-mono bg-gray-100 px-2 py-1 rounded text-gray-600">{gridSize} x {gridSize}</span>
+            </div>
+            <input
+              type="range" min="10" max="200" step="10"
+              value={gridSize} onChange={handleSizeChange}
+              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-gray-600"
+            />
+          </div>
+
+          <button
+            onClick={handleRegenerate}
+            className="w-full py-3 px-4 bg-gray-900 hover:bg-gray-800 text-white rounded-lg shadow-md transition-all flex items-center justify-center gap-2 font-medium"
+          >
+            <RefreshCw size={18} />
+            重新生成网格
+          </button>
+        </div>
+      </div>
+
+      {/* 右侧主视图 */}
+      <div className="flex-1 bg-gray-100 relative min-h-[500px]">
+        <div ref={containerRef} className="absolute inset-0 p-4 flex flex-col items-center justify-center overflow-auto">
+          
+          {/* 画布容器 */}
+          <div className="relative shadow-2xl border-4 border-white bg-white rounded-sm shrink-0">
+             <canvas 
+               ref={canvasRef} 
+               className="block touch-none"
+               style={{ imageRendering: 'pixelated' }} 
+             />
+          </div>
+
+          {/* 底部图例 - 显式说明颜色含义 */}
+          <div className="mt-6 bg-white py-3 px-6 rounded-full shadow-sm border border-gray-200 flex gap-6 text-sm">
+             <div className="flex items-center gap-2">
+               <span className="w-4 h-4 bg-blue-500 rounded-sm shadow-sm"></span>
+               <span className="text-gray-700 font-medium">连通水流 (Blue)</span>
+             </div>
+             <div className="flex items-center gap-2">
+               <span className="w-4 h-4 bg-white border border-gray-300 rounded-sm shadow-sm"></span>
+               <span className="text-gray-700 font-medium">开放空隙 (White)</span>
+             </div>
+             <div className="flex items-center gap-2">
+               <span className="w-4 h-4 bg-gray-900 rounded-sm shadow-sm"></span>
+               <span className="text-gray-700 font-medium">阻塞岩石 (Black)</span>
+             </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default PercolationSim;

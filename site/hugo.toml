@@ -1,13 +1,13 @@
 baseURL = 'https://ritori2022.github.io/My-Works/'
 languageCode = 'zh-cn'
-title = '喵喵的项目展示'
+title = '喵喵的创作空间'
 theme = 'PaperMod'
 [pagination]
   pagerSize = 10
 
 [params]
   env = "production"
-  description = "个人项目展示与记录"
+  description = "个人创作与研究档案 — 小说、学术研究、互动可视化与哲学编程"
   author = "喵喵"
   ShowReadingTime = true
   ShowShareButtons = false
@@ -19,8 +19,8 @@ theme = 'PaperMod'
   disableThemeToggle = false
 
   [params.homeInfoParams]
-    Title = "Hi, 欢迎来到喵喵的项目展示 👋"
-    Content = "这里记录了我的各种项目、实验和创作。按时间轴浏览，或选择分类查看。"
+    Title = "欢迎来到喵喵的创作空间 👋"
+    Content = "这里收录了我的小说创作、学术研究、互动可视化实验和编程项目。在代码与文字之间，探索意识的边界。"
 
   [[params.socialIcons]]
     name = "github"
@@ -28,25 +28,45 @@ theme = 'PaperMod'
 
 [menu]
   [[menu.main]]
+    identifier = "novels"
+    name = "小说"
+    url = "/novels/"
+    weight = 10
+  [[menu.main]]
+    identifier = "research"
+    name = "研究"
+    url = "/research/"
+    weight = 20
+  [[menu.main]]
     identifier = "projects"
     name = "项目"
     url = "/projects/"
-    weight = 10
+    weight = 30
+  [[menu.main]]
+    identifier = "games"
+    name = "互动"
+    url = "/games/"
+    weight = 40
+  [[menu.main]]
+    identifier = "philosophy"
+    name = "哲学程序"
+    url = "/philosophy/"
+    weight = 50
   [[menu.main]]
     identifier = "categories"
     name = "分类"
     url = "/categories/"
-    weight = 20
+    weight = 60
   [[menu.main]]
     identifier = "tags"
     name = "标签"
     url = "/tags/"
-    weight = 30
+    weight = 70
   [[menu.main]]
     identifier = "archives"
     name = "归档"
     url = "/archives/"
-    weight = 40
+    weight = 80
 
 [outputs]
   home = ["HTML", "RSS", "JSON"]
@@ -54,3 +74,8 @@ theme = 'PaperMod'
 [taxonomies]
   category = "categories"
   tag = "tags"
+
+[markup]
+  [markup.goldmark]
+    [markup.goldmark.renderer]
+      unsafe = true
