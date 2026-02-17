@@ -7,7 +7,7 @@ categories: ["中篇小说"]
 ShowToc: true
 ShowReadingTime: true
 cover:
-  image: "/images/covers/mirror_self_cover.jpg"
+  image: "images/covers/mirror_self_cover.jpg"
   alt: "镜中的我不是我"
   relative: false
 ---

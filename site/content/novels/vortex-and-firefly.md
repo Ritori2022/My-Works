@@ -7,7 +7,7 @@ categories: ["长篇小说"]
 ShowToc: true
 ShowReadingTime: true
 cover:
-  image: "/images/covers/cover.jpg"
+  image: "images/covers/cover.jpg"
   alt: "漩涡与萤火"
   relative: false
 ---

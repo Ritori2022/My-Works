@@ -1,471 +1,195 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Plus, Minus, Fish as FishIcon, Droplets } from 'lucide-react';
-
-// --- 配置与常量 ---
-
-const TANK_CONFIG = {
-  width: 100, // %
-  height: 100, // %
-  drag: 0.96, // 水阻力
-  turnSpeed: 0.08, // 转向灵活性
-  perceptionRadius: 30, // 感知食物的范围
-};
-
-// 鱼种数据：模拟不同鱼类的物理特性和纹理颜色
-const SPECIES = [
-  {
-    name: 'Neon Tetra',
-    color1: '#0052cc', // 霓虹蓝
-    color2: '#ff0000', // 霓虹红
-    scale: 0.8,
-    speedBase: 0.7,
-    finColor: 'rgba(200, 200, 255, 0.4)'
-  },
-  {
-    name: 'Goldfish',
-    color1: '#ff9900',
-    color2: '#ffcc00',
-    scale: 1.2,
-    speedBase: 0.4,
-    finColor: 'rgba(255, 200, 100, 0.5)'
-  },
-  {
-    name: 'Discus',
-    color1: '#20e3b2', // 青绿
-    color2: '#2980b9', // 深蓝
-    scale: 1.5,
-    speedBase: 0.3,
-    finColor: 'rgba(40, 220, 180, 0.3)'
-  },
-  {
-    name: 'Clownfish',
-    color1: '#ff6b35',
-    color2: '#ffffff', // 条纹需特殊处理，这里简化为渐变
-    scale: 1.0,
-    speedBase: 0.5,
-    finColor: 'rgba(255, 107, 53, 0.6)'
-  }
-];
-
-// --- 辅助数学函数 ---
-
-const random = (min, max) => Math.random() * (max - min) + min;
-// 角度插值，用于平滑旋转
-const lerpAngle = (start, end, t) => {
-  const da = (end - start) % (2 * Math.PI);
-  const dist = (2 * da) % (2 * Math.PI) - da;
-  return start + dist * t;
-};
-
-// --- 组件：高仿真鱼 (High Fidelity Fish) ---
-
-const RealisticFish = ({ x, y, angle, species, depth, swimmingSpeed }) => {
-  // 根据深度计算视差效果
-  const scale = species.scale * (0.5 + depth * 0.5); // 0.5 ~ 1.0 大小
-  const blur = (1 - depth) * 2; // 远处的鱼稍微模糊
-  const brightness = 0.6 + depth * 0.4; // 远处的鱼更暗
-  
-  // 尾巴摆动动画频率基于游动速度
-  const tailFreq = 0.2 / (swimmingSpeed + 0.1); 
-
-  return (
-    <div
-      className="absolute pointer-events-none will-change-transform"
-      style={{
-        left: `${x}%`,
-        top: `${y}%`,
-        zIndex: Math.floor(depth * 100), // 深度排序
-        transform: `translate(-50%, -50%) rotate(${angle}rad) scale(${scale})`,
-        filter: `blur(${blur}px) brightness(${brightness})`,
-        opacity: 0.9 + depth * 0.1,
-      }}
-    >
-      <svg width="60" height="40" viewBox="0 0 60 40" className="overflow-visible">
-        <defs>
-          {/* 身体渐变：模拟光泽 */}
-          <radialGradient id={`grad-${species.name}`} cx="50%" cy="30%" r="60%">
-            <stop offset="0%" stopColor={species.color2} />
-            <stop offset="100%" stopColor={species.color1} />
-          </radialGradient>
-          {/* 鳞片纹理滤镜 */}
-          <filter id="scales">
-            <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" result="noise"/>
-            <feComposite operator="in" in="noise" in2="SourceGraphic" result="composite"/>
-            <feBlend mode="multiply" in="composite" in2="SourceGraphic" />
-          </filter>
-        </defs>
-
-        {/* 尾鳍 (动态摆动) */}
-        <path 
-          d="M10,20 Q0,5 0,10 L0,30 Q0,35 10,20" 
-          fill={species.finColor} 
-          style={{ 
-            animation: `swimTail ${tailFreq}s infinite ease-in-out`,
-            transformOrigin: '10px 20px' 
-          }}
-        />
-
-        {/* 侧鳍 (稍微摆动) */}
-        <path 
-          d="M35,22 L25,32 L35,28 Z" 
-          fill={species.finColor} 
-          className="opacity-80"
-          style={{ 
-             animation: `swimFin ${tailFreq * 1.5}s infinite ease-in-out`,
-             transformOrigin: '35px 22px'
-          }}
-        />
-
-        {/* 身体主体 */}
-        <path 
-          d="M10,20 Q25,0 50,20 Q25,40 10,20" 
-          fill={`url(#grad-${species.name})`} 
-          stroke="rgba(255,255,255,0.1)"
-          strokeWidth="0.5"
-          // filter="url(#scales)" // 某些浏览器可能会有性能问题，视情况开启
-        />
-        
-        {/* 高光 (Specular highlight) */}
-        <ellipse cx="35" cy="15" rx="10" ry="4" fill="white" opacity="0.2" transform="rotate(-10 35 15)" />
-
-        {/* 眼睛 */}
-        <circle cx="48" cy="16" r="2.5" fill="white" />
-        <circle cx="48" cy="16" r="1.5" fill="black" />
-      </svg>
-    </div>
-  );
-};
-
-// --- 组件：气泡 ---
-const Bubble = ({ x, y, size, opacity }) => (
-  <div 
-    className="absolute rounded-full border border-white/40 bg-white/10"
-    style={{
-      left: `${x}%`,
-      top: `${y}%`,
-      width: `${size}px`,
-      height: `${size}px`,
-      opacity: opacity,
-      boxShadow: 'inset -2px -2px 4px rgba(255,255,255,0.2)',
-    }}
-  />
-);
-
-// --- 主应用 ---
-
-export default function RealisticAquarium() {
-  const [fishes, setFishes] = useState([]);
-  const [food, setFood] = useState([]);
-  const [bubbles, setBubbles] = useState([]);
-  const containerRef = useRef(null);
-  const requestRef = useRef();
-
-  // 引用以避免闭包陷阱
-  const gameState = useRef({
-    fishes: [],
-    food: [],
-    bubbles: []
-  });
-
-  // 初始化鱼群
-  useEffect(() => {
-    const initialFishes = Array.from({ length: 8 }).map(createFish);
-    gameState.current.fishes = initialFishes;
-    setFishes(initialFishes);
-  }, []);
-
-  function createFish() {
-    const species = SPECIES[Math.floor(Math.random() * SPECIES.length)];
-    return {
-      id: Math.random().toString(36).substr(2, 9),
-      x: random(10, 90),
-      y: random(10, 90),
-      vx: random(-0.2, 0.2), // 速度向量 X
-      vy: random(-0.1, 0.1), // 速度向量 Y
-      angle: random(0, Math.PI * 2), // 当前朝向
-      species,
-      depth: random(0.1, 1), // 0.1 (远) - 1.0 (近)
-      phase: random(0, 100), // 用于正弦波游动计算
-    };
-  }
-
-  const handleAddFish = () => {
-    const newFish = createFish();
-    gameState.current.fishes.push(newFish);
-  };
-
-  const handleRemoveFish = () => {
-    gameState.current.fishes.pop();
-  };
-
-  const handleFeed = (e) => {
-    if (!containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
-    
-    // 增加分散的食物颗粒
-    for(let i=0; i<3; i++) {
-        gameState.current.food.push({
-            id: Date.now() + i,
-            x: x + random(-2, 2),
-            y: y + random(-2, 2),
-            vx: random(-0.1, 0.1),
-            vy: 0
-        });
-    }
-  };
-
-  // --- 物理引擎循环 ---
-
-  const update = () => {
-    const state = gameState.current;
-
-    // 1. 更新食物
-    state.food = state.food
-      .map(f => ({
-        ...f,
-        y: f.y + 0.2, // 重力
-        x: f.x + Math.sin(f.y * 0.1) * 0.05 // 水流扰动
-      }))
-      .filter(f => f.y < 105); // 移除掉出底部的
-
-    // 2. 更新气泡
-    if (Math.random() < 0.03) {
-      state.bubbles.push({
-        id: Math.random(),
-        x: random(0, 100),
-        y: 105,
-        size: random(2, 8),
-        speed: random(0.1, 0.4),
-        opacity: random(0.3, 0.6)
-      });
-    }
-    state.bubbles = state.bubbles
-      .map(b => ({
-        ...b,
-        y: b.y - b.speed,
-        x: b.x + Math.sin(b.y * 0.05 + b.id) * 0.1
-      }))
-      .filter(b => b.y > -10);
-
-    // 3. 更新鱼 (核心逻辑)
-    state.fishes = state.fishes.map(fish => {
-      let { x, y, vx, vy, angle, species, phase } = fish;
-      
-      // 基础推进力 (Cruising speed)
-      let ax = 0; // 加速度 X
-      let ay = 0; // 加速度 Y
-
-      // -- 行为 A: 觅食 --
-      let targetX = null;
-      let targetY = null;
-      let chasing = false;
-
-      // 寻找最近的食物
-      let closestFood = null;
-      let minDist = TANK_CONFIG.perceptionRadius;
-
-      state.food.forEach(f => {
-        const dx = f.x - x;
-        const dy = f.y - y;
-        const dist = Math.sqrt(dx*dx + dy*dy);
-        if (dist < minDist) {
-          minDist = dist;
-          closestFood = f;
-        }
-      });
-
-      if (closestFood) {
-        targetX = closestFood.x;
-        targetY = closestFood.y;
-        chasing = true;
-        
-        // 判定吃到食物
-        if (minDist < 2) {
-          state.food = state.food.filter(f => f !== closestFood);
-        }
-      } else {
-        // -- 行为 B: 随机漫游 --
-        // 使用 Perlin Noise 类似的平滑随机改变目标点会更好，这里简化为随时间变化向量
-        phase += 0.01;
-        ax += Math.cos(phase * 0.5) * 0.005;
-        ay += Math.sin(phase * 0.7) * 0.002; // Y轴变动较小
-      }
-
-      // 计算目标向量
-      if (chasing) {
-        const dx = targetX - x;
-        const dy = targetY - y;
-        const angleToFood = Math.atan2(dy, dx);
-        ax += Math.cos(angleToFood) * 0.04; // 冲刺力度
-        ay += Math.sin(angleToFood) * 0.04;
-      }
-
-      // 边界规避 (Soft Walls) - 靠近墙壁时产生反向推力
-      const margin = 10;
-      if (x < margin) ax += 0.005;
-      if (x > 100 - margin) ax -= 0.005;
-      if (y < margin) ay += 0.005;
-      if (y > 100 - margin) ay -= 0.005;
-
-      // 应用加速度
-      vx += ax;
-      vy += ay;
-
-      // 应用阻力 (Drag)
-      vx *= TANK_CONFIG.drag;
-      vy *= TANK_CONFIG.drag;
-
-      // 速度限制
-      const currentSpeed = Math.sqrt(vx*vx + vy*vy);
-      const maxSpeed = chasing ? species.speedBase * 2 : species.speedBase;
-      if (currentSpeed > maxSpeed) {
-        vx = (vx / currentSpeed) * maxSpeed;
-        vy = (vy / currentSpeed) * maxSpeed;
-      }
-
-      // 最小游动速度 (防止完全静止)
-      if (currentSpeed < 0.05) {
-        vx += (Math.random() - 0.5) * 0.01;
-      }
-
-      // 更新位置
-      x += vx;
-      y += vy;
-
-      // 计算朝向 (平滑转弯)
-      // 目标角度是速度向量的方向
-      let targetAngle = Math.atan2(vy, vx);
-      angle = lerpAngle(angle, targetAngle, TANK_CONFIG.turnSpeed);
-
-      return { ...fish, x, y, vx, vy, angle, phase };
-    });
-
-    // 触发 React 渲染 (为了性能，可以考虑限制 FPS，但这里为了流畅度直接每帧渲染)
-    // 这里的 setState 包含了大量对象，生产环境可能需要更优化的 Canvas 方案，但对于 React DOM 演示足够
-    setFishes([...state.fishes]);
-    setFood([...state.food]);
-    setBubbles([...state.bubbles]);
-
-    requestRef.current = requestAnimationFrame(update);
-  };
-
-  useEffect(() => {
-    requestRef.current = requestAnimationFrame(update);
-    return () => cancelAnimationFrame(requestRef.current);
-  }, []);
-
-  return (
-    <div className="w-full h-screen bg-black flex flex-col items-center justify-center overflow-hidden font-sans">
-      
-      {/* 全局样式注入：用于鱼的摆动动画 */}
-      <style>{`
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>水族箱模拟器 v2.0</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
         @keyframes swimTail {
-          0%, 100% { d: path("M10,20 Q0,5 0,10 L0,30 Q0,35 10,20"); }
-          50% { d: path("M10,20 Q0,10 5,10 L5,30 Q0,30 10,20"); }
+            0%, 100% { transform: scaleX(1); }
+            50% { transform: scaleX(-0.8) translateX(2px); }
         }
         @keyframes swimFin {
-          0%, 100% { transform: rotate(0deg) translate(0,0); }
-          50% { transform: rotate(-15deg) translate(-2px,0); }
+            0%, 100% { transform: rotate(0deg); }
+            50% { transform: rotate(-15deg) translate(-2px,0); }
         }
         @keyframes lightRays {
-          0% { transform: rotate(45deg) translateY(0); opacity: 0.3; }
-          50% { transform: rotate(45deg) translateY(-20px); opacity: 0.5; }
-          100% { transform: rotate(45deg) translateY(0); opacity: 0.3; }
+            0% { transform: rotate(45deg) translateY(0); opacity: 0.3; }
+            50% { transform: rotate(45deg) translateY(-20px); opacity: 0.5; }
+            100% { transform: rotate(45deg) translateY(0); opacity: 0.3; }
         }
-      `}</style>
+        body { margin: 0; overflow: hidden; }
+    </style>
+</head>
+<body class="bg-black">
+<div id="app" class="w-full h-screen flex flex-col items-center justify-center overflow-hidden font-sans"></div>
 
-      {/* 主缸体 */}
-      <div 
-        ref={containerRef}
-        onClick={handleFeed}
-        className="relative w-full max-w-5xl aspect-video bg-gray-900 rounded-xl shadow-2xl overflow-hidden cursor-crosshair border-8 border-gray-800"
-      >
-        {/* 层1: 真实背景图 */}
-        <div 
-          className="absolute inset-0 bg-cover bg-center z-0"
-          style={{ 
-            backgroundImage: 'url("https://images.unsplash.com/photo-1582294165215-46eb5324508d?auto=format&fit=crop&q=80")',
-            filter: 'contrast(1.1) brightness(0.8)'
-          }} 
-        />
-        
-        {/* 层2: 水体氛围遮罩 (蓝色滤镜 + 渐变) */}
-        <div className="absolute inset-0 bg-gradient-to-b from-cyan-900/30 via-transparent to-blue-900/60 mix-blend-multiply z-0 pointer-events-none" />
+<script>
+// --- 配置 ---
+const TANK_CONFIG = { drag: 0.96, turnSpeed: 0.08, perceptionRadius: 30 };
 
-        {/* 层3: God Rays (丁达尔光效) */}
-        <div className="absolute -top-1/2 -left-1/2 w-[200%] h-[200%] pointer-events-none z-10 opacity-30">
-          <div 
-            className="w-full h-full bg-gradient-to-r from-transparent via-white to-transparent w-24 blur-xl"
-            style={{ 
-              animation: 'lightRays 8s ease-in-out infinite',
-              background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.1) 45%, rgba(255,255,255,0.0) 100%)',
-              transform: 'rotate(45deg)'
-            }}
-          />
-        </div>
+const SPECIES = [
+    { name: 'NeonTetra', color1: '#0052cc', color2: '#ff0000', scale: 0.8, speedBase: 0.7, finColor: 'rgba(200,200,255,0.4)' },
+    { name: 'Goldfish', color1: '#ff9900', color2: '#ffcc00', scale: 1.2, speedBase: 0.4, finColor: 'rgba(255,200,100,0.5)' },
+    { name: 'Discus', color1: '#20e3b2', color2: '#2980b9', scale: 1.5, speedBase: 0.3, finColor: 'rgba(40,220,180,0.3)' },
+    { name: 'Clownfish', color1: '#ff6b35', color2: '#ffffff', scale: 1.0, speedBase: 0.5, finColor: 'rgba(255,107,53,0.6)' }
+];
 
-        {/* 层4: 气泡 */}
-        {bubbles.map(b => (
-          <Bubble key={b.id} {...b} />
-        ))}
+const random = (min, max) => Math.random() * (max - min) + min;
+const lerpAngle = (start, end, t) => {
+    const da = (end - start) % (2 * Math.PI);
+    const dist = (2 * da) % (2 * Math.PI) - da;
+    return start + dist * t;
+};
 
-        {/* 层5: 食物颗粒 */}
-        {food.map(f => (
-          <div 
-            key={f.id}
-            className="absolute w-1.5 h-1.5 bg-yellow-600 rounded-full shadow-sm z-20"
-            style={{ left: `${f.x}%`, top: `${f.y}%` }}
-          />
-        ))}
+// --- State ---
+let fishes = [];
+let food = [];
+let bubbles = [];
 
-        {/* 层6: 鱼群 */}
-        {fishes.map(fish => (
-          <RealisticFish 
-            key={fish.id} 
-            {...fish} 
-            swimmingSpeed={Math.sqrt(fish.vx**2 + fish.vy**2) * 10}
-          />
-        ))}
-        
-        {/* 层7: 前景装饰 (模糊的水草/岩石，增加景深) */}
-        <div className="absolute bottom-0 w-full h-32 bg-gradient-to-t from-black/80 to-transparent z-30 pointer-events-none"></div>
-        
-        {/* UI Overlay */}
-        <div className="absolute top-6 right-6 flex flex-col gap-2 z-40">
-           <div className="bg-black/40 backdrop-blur-md p-3 rounded-lg border border-white/10 text-white shadow-lg">
-              <div className="text-xs text-gray-300 mb-2 uppercase tracking-wider font-bold">生态系统控制</div>
-              <div className="flex gap-2">
-                <button 
-                    onClick={handleAddFish}
-                    className="p-2 bg-blue-600/80 hover:bg-blue-500 rounded transition flex items-center justify-center w-10 h-10"
-                    title="添加鱼"
-                >
-                    <Plus size={18} />
-                </button>
-                <button 
-                    onClick={handleRemoveFish}
-                    className="p-2 bg-red-600/80 hover:bg-red-500 rounded transition flex items-center justify-center w-10 h-10"
-                    title="移除鱼"
-                >
-                    <Minus size={18} />
-                </button>
-              </div>
-              <div className="mt-2 text-xs text-blue-200 flex items-center gap-1">
-                 <FishIcon size={12} /> 数量: {fishes.length}
-              </div>
-              <div className="mt-1 text-xs text-yellow-200 flex items-center gap-1">
-                 <Droplets size={12} /> 点击投放鱼食
-              </div>
-           </div>
-        </div>
-
-      </div>
-
-      <div className="mt-4 text-gray-500 text-sm">
-        Simulation v2.0 - Boids Physics & Procedural SVG Textures
-      </div>
-    </div>
-  );
+function createFish() {
+    const species = SPECIES[Math.floor(Math.random() * SPECIES.length)];
+    return {
+        id: Math.random().toString(36).substr(2, 9),
+        x: random(10, 90), y: random(10, 90),
+        vx: random(-0.2, 0.2), vy: random(-0.1, 0.1),
+        angle: random(0, Math.PI * 2),
+        species, depth: random(0.1, 1), phase: random(0, 100),
+    };
 }
+
+for (let i = 0; i < 8; i++) fishes.push(createFish());
+
+// --- DOM ---
+const app = document.getElementById('app');
+const tank = document.createElement('div');
+tank.className = 'relative w-full max-w-5xl cursor-crosshair overflow-hidden rounded-xl shadow-2xl border-8 border-gray-800';
+tank.style.cssText = 'aspect-ratio:16/9;background:#0c1a2a;';
+tank.innerHTML = `
+    <div class="absolute inset-0 bg-gradient-to-b from-cyan-900/40 via-blue-900/20 to-blue-950/70 z-0"></div>
+    <div class="absolute -top-1/2 -left-1/2 w-[200%] h-[200%] pointer-events-none z-[1] opacity-30">
+        <div class="w-full h-full blur-xl" style="animation:lightRays 8s ease-in-out infinite;background:linear-gradient(90deg,transparent 0%,rgba(255,255,255,0.1) 45%,transparent 100%);transform:rotate(45deg)"></div>
+    </div>
+    <div id="bubbleLayer" class="absolute inset-0 z-[2] pointer-events-none"></div>
+    <div id="foodLayer" class="absolute inset-0 z-[4] pointer-events-none"></div>
+    <div id="fishLayer" class="absolute inset-0 z-[3] pointer-events-none"></div>
+    <div class="absolute bottom-0 w-full h-32 bg-gradient-to-t from-black/80 to-transparent z-[5] pointer-events-none"></div>
+    <div class="absolute top-6 right-6 z-[6]">
+        <div class="bg-black/40 backdrop-blur-md p-3 rounded-lg border border-white/10 text-white shadow-lg">
+            <div class="text-xs text-gray-300 mb-2 uppercase tracking-wider font-bold">生态系统控制</div>
+            <div class="flex gap-2">
+                <button id="addBtn" class="p-2 bg-blue-600/80 hover:bg-blue-500 rounded transition flex items-center justify-center w-10 h-10" title="添加鱼">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                </button>
+                <button id="removeBtn" class="p-2 bg-red-600/80 hover:bg-red-500 rounded transition flex items-center justify-center w-10 h-10" title="移除鱼">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                </button>
+            </div>
+            <div id="fishCount" class="mt-2 text-xs text-blue-200">🐟 数量: 8</div>
+            <div class="mt-1 text-xs text-yellow-200">💧 点击投放鱼食</div>
+        </div>
+    </div>
+`;
+app.appendChild(tank);
+
+const subtitle = document.createElement('div');
+subtitle.className = 'mt-4 text-gray-500 text-sm';
+subtitle.textContent = 'Simulation v2.0 - Boids Physics & Procedural SVG';
+app.appendChild(subtitle);
+
+const fishLayer = document.getElementById('fishLayer');
+const foodLayer = document.getElementById('foodLayer');
+const bubbleLayer = document.getElementById('bubbleLayer');
+const fishCountEl = document.getElementById('fishCount');
+
+document.getElementById('addBtn').addEventListener('click', e => { e.stopPropagation(); fishes.push(createFish()); });
+document.getElementById('removeBtn').addEventListener('click', e => { e.stopPropagation(); fishes.pop(); });
+tank.addEventListener('click', e => {
+    const rect = tank.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    for (let i = 0; i < 3; i++) food.push({ id: Date.now()+i, x: x+random(-2,2), y: y+random(-2,2), vx: random(-0.1,0.1), vy: 0 });
+});
+
+// --- Fish SVG ---
+function fishSVGHTML(species) {
+    return `<svg width="60" height="40" viewBox="0 0 60 40" style="overflow:visible">
+        <defs><radialGradient id="g-${species.name}" cx="50%" cy="30%" r="60%">
+            <stop offset="0%" stop-color="${species.color2}"/><stop offset="100%" stop-color="${species.color1}"/>
+        </radialGradient></defs>
+        <path d="M10,20 Q0,5 0,10 L0,30 Q0,35 10,20" fill="${species.finColor}" style="animation:swimTail .6s infinite ease-in-out;transform-origin:10px 20px"/>
+        <path d="M35,22 L25,32 L35,28 Z" fill="${species.finColor}" opacity=".8" style="animation:swimFin .9s infinite ease-in-out;transform-origin:35px 22px"/>
+        <path d="M10,20 Q25,0 50,20 Q25,40 10,20" fill="url(#g-${species.name})" stroke="rgba(255,255,255,0.1)" stroke-width=".5"/>
+        <ellipse cx="35" cy="15" rx="10" ry="4" fill="white" opacity=".2" transform="rotate(-10 35 15)"/>
+        <circle cx="48" cy="16" r="2.5" fill="white"/><circle cx="48" cy="16" r="1.5" fill="black"/>
+    </svg>`;
+}
+
+// --- Render ---
+function render() {
+    let html = '';
+    fishes.forEach(fish => {
+        const s = fish.species.scale * (0.5 + fish.depth * 0.5);
+        const bl = (1 - fish.depth) * 2;
+        const br = 0.6 + fish.depth * 0.4;
+        html += `<div style="position:absolute;left:${fish.x}%;top:${fish.y}%;z-index:${Math.floor(fish.depth*100)};transform:translate(-50%,-50%) rotate(${fish.angle}rad) scale(${s});filter:blur(${bl}px) brightness(${br});opacity:${0.9+fish.depth*0.1};pointer-events:none;will-change:transform">${fishSVGHTML(fish.species)}</div>`;
+    });
+    fishLayer.innerHTML = html;
+
+    html = '';
+    food.forEach(f => { html += `<div style="position:absolute;left:${f.x}%;top:${f.y}%;width:6px;height:6px;background:#ca8a04;border-radius:50%;transform:translate(-50%,-50%)"></div>`; });
+    foodLayer.innerHTML = html;
+
+    html = '';
+    bubbles.forEach(b => { html += `<div style="position:absolute;left:${b.x}%;top:${b.y}%;width:${b.size}px;height:${b.size}px;border-radius:50%;border:1px solid rgba(255,255,255,0.4);background:rgba(255,255,255,0.1);opacity:${b.opacity};box-shadow:inset -2px -2px 4px rgba(255,255,255,0.2)"></div>`; });
+    bubbleLayer.innerHTML = html;
+
+    fishCountEl.textContent = `🐟 数量: ${fishes.length}`;
+}
+
+// --- Physics ---
+function update() {
+    food = food.map(f => ({ ...f, y: f.y + 0.2, x: f.x + Math.sin(f.y*0.1)*0.05 })).filter(f => f.y < 105);
+
+    if (Math.random() < 0.03) bubbles.push({ id: Math.random(), x: random(0,100), y: 105, size: random(2,8), speed: random(0.1,0.4), opacity: random(0.3,0.6) });
+    bubbles = bubbles.map(b => ({ ...b, y: b.y-b.speed, x: b.x+Math.sin(b.y*0.05+b.id)*0.1 })).filter(b => b.y > -10);
+
+    fishes = fishes.map(fish => {
+        let { x, y, vx, vy, angle, species, phase } = fish;
+        let ax = 0, ay = 0, chasing = false;
+        let closestFood = null, minDist = TANK_CONFIG.perceptionRadius;
+
+        food.forEach(f => { const d = Math.sqrt((f.x-x)**2+(f.y-y)**2); if (d < minDist) { minDist = d; closestFood = f; } });
+
+        if (closestFood) {
+            chasing = true;
+            const a = Math.atan2(closestFood.y-y, closestFood.x-x);
+            ax += Math.cos(a)*0.04; ay += Math.sin(a)*0.04;
+            if (minDist < 2) food = food.filter(f => f !== closestFood);
+        } else {
+            phase += 0.01; ax += Math.cos(phase*0.5)*0.005; ay += Math.sin(phase*0.7)*0.002;
+        }
+
+        if (x < 10) ax += 0.005; if (x > 90) ax -= 0.005;
+        if (y < 10) ay += 0.005; if (y > 90) ay -= 0.005;
+
+        vx = (vx+ax)*TANK_CONFIG.drag; vy = (vy+ay)*TANK_CONFIG.drag;
+        const spd = Math.sqrt(vx*vx+vy*vy);
+        const max = chasing ? species.speedBase*2 : species.speedBase;
+        if (spd > max) { vx = (vx/spd)*max; vy = (vy/spd)*max; }
+        if (spd < 0.05) vx += (Math.random()-0.5)*0.01;
+
+        x += vx; y += vy;
+        angle = lerpAngle(angle, Math.atan2(vy, vx), TANK_CONFIG.turnSpeed);
+        return { ...fish, x, y, vx, vy, angle, phase };
+    });
+
+    render();
+    requestAnimationFrame(update);
+}
+
+requestAnimationFrame(update);
+</script>
+</body>
+</html>
