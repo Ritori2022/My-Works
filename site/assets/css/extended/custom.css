@@ -1,0 +1,9 @@
+/* Fix CJK character overlap in code blocks */
+pre, code {
+    font-family: "Fira Code", "Source Code Pro", "Noto Sans Mono CJK SC", "Microsoft YaHei", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+pre code {
+    letter-spacing: 0.02em;
+    word-break: break-all;
+}
