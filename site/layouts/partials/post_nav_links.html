@@ -1,0 +1,49 @@
+{{- /* Section-aware prev/next navigation.
+     Uses PrevInSection / NextInSection so navigation stays within the same section.
+     Falls back to global Prev / Next for pages that are not in a named section. */ -}}
+
+{{- $inSection := and .CurrentSection .CurrentSection.Title }}
+
+{{- if $inSection }}
+  {{- $prev := .PrevInSection }}
+  {{- $next := .NextInSection }}
+  {{- if or $prev $next }}
+<nav class="paginav">
+  {{- with $prev }}
+  <a class="prev" href="{{ .Permalink }}">
+    <span class="title">« 上一篇</span>
+    <br>
+    <span>{{- .Name -}}</span>
+  </a>
+  {{- end }}
+  {{- with $next }}
+  <a class="next" href="{{ .Permalink }}">
+    <span class="title">下一篇 »</span>
+    <br>
+    <span>{{- .Name -}}</span>
+  </a>
+  {{- end }}
+</nav>
+  {{- end }}
+{{- else }}
+  {{- /* Fallback: global navigation for pages outside named sections */ -}}
+  {{- $pages := where site.RegularPages "Type" "in" site.Params.mainSections }}
+  {{- if and (gt (len $pages) 1) (in $pages . ) }}
+<nav class="paginav">
+  {{- with $pages.Next . }}
+  <a class="prev" href="{{ .Permalink }}">
+    <span class="title">« 上一篇</span>
+    <br>
+    <span>{{- .Name -}}</span>
+  </a>
+  {{- end }}
+  {{- with $pages.Prev . }}
+  <a class="next" href="{{ .Permalink }}">
+    <span class="title">下一篇 »</span>
+    <br>
+    <span>{{- .Name -}}</span>
+  </a>
+  {{- end }}
+</nav>
+  {{- end }}
+{{- end }}
