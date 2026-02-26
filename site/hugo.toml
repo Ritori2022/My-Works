@@ -53,6 +53,21 @@ theme = 'PaperMod'
     url = "/philosophy/"
     weight = 50
   [[menu.main]]
+    identifier = "thoughts"
+    name = "思考"
+    url = "/thoughts/"
+    weight = 55
+  [[menu.main]]
+    identifier = "theater"
+    name = "概念剧场"
+    url = "/theater/"
+    weight = 57
+  [[menu.main]]
+    identifier = "notes"
+    name = "笔记"
+    url = "/notes/"
+    weight = 59
+  [[menu.main]]
     identifier = "categories"
     name = "分类"
     url = "/categories/"
